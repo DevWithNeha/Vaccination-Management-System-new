@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Login — Vaccination Management System</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#0b5cff;
+  --accent2:#0ea5a4;
+  --bg:#eef4ff;
+  --radius:16px;
+  --muted:#6b7280;
+  --card:#ffffffdd;
+  font-family:Inter,system-ui;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  min-height:100vh;
+  background:linear-gradient(135deg,#e7f0ff,#fafcff);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:20px;
+}
+
+.box{
+  width:100%;
+  max-width:420px;
+  background:var(--card);
+  padding:30px;
+  border-radius:var(--radius);
+  backdrop-filter:blur(18px);
+  box-shadow:0 24px 50px rgba(0,0,0,0.1);
+  animation:fade 0.6s ease;
+}
+@keyframes fade{
+  from{opacity:0; transform:translateY(20px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+.logo{
+  width:60px;height:60px;border-radius:16px;
+  background:linear-gradient(135deg,var(--accent),#2bb6ff);
+  display:flex;align-items:center;justify-content:center;
+  color:white;font-weight:900;font-size:22px;
+  margin:0 auto;
+}
+
+h1{
+  text-align:center;
+  margin-top:14px;
+  font-size:26px;
+  font-weight:900;
+}
+
+.role{
+  text-align:center;
+  margin-top:6px;
+  font-size:14px;
+  color:var(--muted);
+}
+
+label{font-weight:700;font-size:14px;margin-top:14px;display:block}
+input{
+  width:100%;padding:12px;
+  border-radius:12px;
+  border:1px solid #dbe2f0;
+  margin-top:6px;
+  font-size:15px;
+}
+
+.btn{
+  width:100%;
+  background:var(--accent);
+  padding:12px;
+  color:white;
+  font-size:16px;
+  border-radius:12px;
+  border:none;
+  margin-top:20px;
+  cursor:pointer;
+  font-weight:700;
+}
+
+.btn:hover{background:#0048d6}
+
+.info{
+  margin-top:16px;
+  text-align:center;
+  font-size:14px;
+  color:var(--muted);
+}
+
+a{color:var(--accent);font-weight:700;text-decoration:none}
+#errorMsg{color:red;margin-top:10px;text-align:center;font-size:14px}
+
+</style>
+</head>
+<body>
+
+<div class="box">
+
+  <div class="logo">VMS</div>
+
+  <h1>Login</h1>
+  <div class="role" id="roleTitle">Patient Login</div>
+
+  <div style="margin-top:20px">
+    <label>Email</label>
+    <input id="email" type="email" placeholder="Enter email">
+
+    <label>Password</label>
+    <input id="password" type="password" placeholder="Enter password">
+
+    <div id="errorMsg"></div>
+
+    <button class="btn" id="loginBtn">Login</button>
+
+    <div class="info">
+      Not registered? <a href="register.html">Create account</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+
+  // detect role from URL
+  const params = new URLSearchParams(location.search);
+  const isAdmin = params.get("role") === "admin";
+
+  const roleTitle = document.getElementById("roleTitle");
+  roleTitle.innerText = isAdmin ? "Admin Login" : "Patient Login";
+
+  const loginBtn = document.getElementById("loginBtn");
+  const errorMsg = document.getElementById("errorMsg");
+
+  loginBtn.onclick = async ()=>{
+    errorMsg.innerText = "";
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+
+    if(!email || !password){
+      errorMsg.innerText = "Please fill all fields.";
+      return;
+    }
+
+    loginBtn.disabled = true;
+    loginBtn.innerText = "Logging in…";
+
+    try{
+      const res = await fetch("/api/login",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ email,password })
+      });
+
+      const out = await res.json();
+
+      if(out.success){
+
+        // ROLE CHECK
+        if(isAdmin && out.user.role !== "admin"){
+          errorMsg.innerText = "This is not an admin account.";
+          loginBtn.disabled = false;
+          loginBtn.innerText = "Login";
+          return;
+        }
+        if(!isAdmin && out.user.role !== "patient"){
+          errorMsg.innerText = "This account is not a patient.";
+          loginBtn.disabled = false;
+          loginBtn.innerText = "Login";
+          return;
+        }
+
+        // save token + user
+        localStorage.setItem("authToken", out.token);
+        localStorage.setItem("user", JSON.stringify(out.user));
+
+        // redirect by role
+        if(out.user.role === "admin"){
+          location.href = "admin-dashboard.html";
+        } else {
+          location.href = "dashboard-patient.html";
+        }
+
+      } else {
+        errorMsg.innerText = out.msg || "Invalid credentials.";
+      }
+
+    }catch(e){
+      console.error(e);
+      errorMsg.innerText = "Server error.";
+    }
+
+    loginBtn.disabled = false;
+    loginBtn.innerText = "Login";
+  };
+
+})();
+</script>
+
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await res.json();
+
+  if (!data.success) {
+    alert(data.msg || "Login failed");
+    return;
+  }
+
+  // ⭐ THIS WAS MISSING ⭐
+  localStorage.setItem("authToken", data.token);
+  localStorage.setItem("user", JSON.stringify(data.user));
+
+  // Redirect based on role
+  if (data.user.role === "admin") {
+    window.location.href = "admin-dashboard.html";
+  } else {
+    window.location.href = "dashboard-patient.html";
+  }
+});
+</script>
+
+
+</body>
+</html>

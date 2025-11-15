@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin — Notifications</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#2563eb;
+  --muted:#6b7280;
+  --danger:#ef4444;
+  --bg:#f4f7ff;
+  --card:#ffffff;
+  font-family:Inter,system-ui,Arial;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:#0f172a}
+
+header{
+  background:white;padding:14px 20px;
+  display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid #e6eef8;
+}
+.logo{font-weight:900;font-size:22px;color:var(--accent)}
+nav a{
+  text-decoration:none;color:var(--muted);
+  margin-left:12px;padding:8px 12px;border-radius:10px;
+  font-weight:600;
+}
+nav a.active{background:#eaf1ff;color:var(--accent)}
+
+.wrap{max-width:1200px;margin:22px auto;padding:14px}
+h1{font-size:26px;font-weight:900}
+.card{
+  background:white;padding:20px;border-radius:12px;
+  margin-top:20px;border:1px solid #e6eef8;
+  box-shadow:0 10px 26px rgba(10,30,80,0.04)
+}
+
+.label{font-weight:700;margin-top:10px;display:block}
+.input,select,textarea{
+  width:100%;padding:10px;border-radius:10px;
+  border:1px solid #dbe1f2;margin-top:6px;
+}
+textarea{resize:none;height:120px}
+.btn{
+  padding:10px 14px;border-radius:10px;border:none;
+  cursor:pointer;font-weight:700;
+}
+.btn.primary{background:var(--accent);color:white}
+.btn.red{background:var(--danger);color:white}
+.small{font-size:13px;color:var(--muted)}
+
+.nt-item{
+  border-bottom:1px solid #e6eef8;padding:10px 0;
+}
+.nt-item:last-child{border:none}
+.nt-title{font-weight:800}
+.nt-date{font-size:13px;color:var(--muted)}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html">Dashboard</a>
+    <a href="admin-vaccines.html">Vaccines</a>
+    <a href="admin-centers.html">Centers</a>
+    <a href="admin-inventory.html">Inventory</a>
+    <a href="admin-appointments.html">Appointments</a>
+    <a href="admin-records.html">Records</a>
+    <a href="admin-feedback.html">Feedback</a>
+    <a href="admin-notifications.html" class="active">Notifications</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;padding:8px 12px;border-radius:10px">Logout</a>
+  </nav>
+</header>
+
+
+<div class="wrap">
+  <h1>Send Notifications</h1>
+
+  <div class="card">
+    <label class="label">Audience</label>
+    <select id="audience" class="input">
+      <option value="all">All Patients</option>
+      <option value="patients">Only Patients</option>
+      <option value="staff">Staff</option>
+      <option value="single">Single User (Email Required)</option>
+    </select>
+
+    <label class="label">User Email (If Single User)</label>
+    <input id="email" class="input" placeholder="example@gmail.com">
+
+    <label class="label">Title</label>
+    <input id="title" class="input">
+
+    <label class="label">Message</label>
+    <textarea id="message"></textarea>
+
+    <button class="btn primary" id="sendBtn" style="margin-top:12px">Send Notification</button>
+    <div id="sendMsg" class="small"></div>
+  </div>
+
+  <h1 style="margin-top:26px">Notification History</h1>
+
+  <div class="card" id="history"></div>
+
+</div>
+
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem("authToken");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  if(!token) return location.href="login.html";
+  if(user.role !== "admin") return location.href="dashboard-patient.html";
+
+  document.getElementById("logoutBtn").onclick = ()=>{
+    localStorage.clear();
+    location.href = "login.html";
+  };
+
+  const sendBtn = document.getElementById("sendBtn");
+  const sendMsg = document.getElementById("sendMsg");
+  const audience = document.getElementById("audience");
+  const email = document.getElementById("email");
+  const title = document.getElementById("title");
+  const message = document.getElementById("message");
+  const history = document.getElementById("history");
+
+  // ---------- LOAD NOTIFICATION HISTORY ----------
+  async function loadHistory(){
+    history.innerHTML = "Loading...";
+
+    const res = await fetch("/api/notifications/admin/history", {
+      headers: { "Authorization": "Bearer "+token }
+    });
+
+    const list = await res.json();
+    if(!list.length){
+      history.innerHTML = "<div class='small'>No notifications yet.</div>";
+      return;
+    }
+
+    history.innerHTML = "";
+    list.forEach(n=>{
+      const div = document.createElement("div");
+      div.className = "nt-item";
+      div.innerHTML = `
+        <div class="nt-title">${n.title}</div>
+        <div>${n.message}</div>
+        <div class="nt-date">${new Date(n.created_at).toLocaleString()}</div>
+      `;
+      history.appendChild(div);
+    });
+  }
+
+  await loadHistory();
+
+
+  // ---------- SEND NOTIFICATION ----------
+  sendBtn.onclick = async()=>{
+
+    if(!title.value.trim() || !message.value.trim()){
+      sendMsg.style.color = "red";
+      sendMsg.innerText = "Title and message are required.";
+      return;
+    }
+
+    if(audience.value === "single" && !email.value.trim()){
+      sendMsg.style.color = "red";
+      sendMsg.innerText = "Email required for single user.";
+      return;
+    }
+
+    const body = {
+      audience: audience.value,
+      title: title.value.trim(),
+      message: message.value.trim(),
+      user_email: email.value.trim()
+    };
+
+    const res = await fetch("/api/notifications/admin/send", {
+      method: "POST",
+      headers: { "Content-Type":"application/json", "Authorization":"Bearer "+token },
+      body: JSON.stringify(body)
+    });
+
+    const out = await res.json();
+
+    if(out.success){
+      sendMsg.style.color = "green";
+      sendMsg.innerText = "Sent!";
+      title.value = "";
+      message.value = "";
+      email.value = "";
+      await loadHistory();
+    } else {
+      sendMsg.style.color = "red";
+      sendMsg.innerText = out.msg || "Failed";
+    }
+  };
+
+})();
+</script>
+
+</body>
+</html>

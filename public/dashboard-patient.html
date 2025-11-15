@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Patient Dashboard – Vaccination System</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+  :root{
+    --p:#2563eb;
+    --p2:#0ea5e9;
+    --bg:#f2f7ff;
+    --card:white;
+    --muted:#6b7280;
+    --radius:18px;
+    font-family:Inter,system-ui,Arial;
+  }
+  body{margin:0;background:var(--bg);}
+  header{
+    background:white;padding:14px 22px;display:flex;align-items:center;
+    justify-content:space-between;box-shadow:0 4px 14px rgba(0,0,0,0.08);position:sticky;top:0;z-index:10;
+  }
+  .logo{font-size:22px;font-weight:800;color:var(--p);}
+  nav a{
+    margin-left:14px;text-decoration:none;font-weight:600;color:var(--muted);
+    padding:8px 14px;border-radius:10px;
+  }
+  nav a.active, nav a:hover{
+    background:#e4edff;color:var(--p);
+  }
+  .logout{
+    background:#ef4444;color:white;padding:8px 12px;border-radius:10px;text-decoration:none;
+  }
+  .wrap{max-width:1150px;margin:18px auto;padding:14px;}
+
+  h1{margin:12px 0 2px;font-size:24px;font-weight:800;color:#0f172a;}
+  .muted{color:var(--muted);font-size:14px;margin-bottom:10px;}
+
+  .grid{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:18px;margin-top:18px;
+  }
+
+  .card{
+    background:var(--card);padding:20px;border-radius:var(--radius);
+    box-shadow:0 10px 22px rgba(0,0,0,0.06);
+  }
+
+  .title{font-weight:700;font-size:18px;margin-bottom:12px;}
+
+  .stat{
+    font-size:28px;font-weight:800;color:var(--p);
+  }
+
+  .btn{
+    background:var(--p);color:white;padding:10px 14px;border-radius:12px;
+    font-weight:700;text-decoration:none;display:inline-block;margin-top:12px;
+  }
+
+  .link{color:var(--p);font-weight:700;text-decoration:none}
+
+  .notif-pill{
+    background:#ef4444;color:white;padding:4px 10px;border-radius:20px;font-size:12px;
+    margin-left:6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Vaccination Portal</div>
+
+  <nav>
+    <a href="dashboard-patient.html" class="active">Dashboard</a>
+    <a href="patient-profile.html">My Profile</a>
+    <a href="patient-vaccines.html">Vaccines</a>
+    <a href="patient-appointment-book.html">Book Appointment</a>
+    <a href="patient-appointments.html">My Appointments</a>
+    <a href="patient-certificates.html">Certificates</a>
+    <a href="patient-notifications.html">
+      Notifications <span id="notifCount" class="notif-pill" style="display:none"></span>
+    </a>
+    <a href="patient-feedback.html">Feedback</a>
+    <a class="logout" id="logoutBtn">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <h1 id="welcome">Welcome</h1>
+  <div class="muted">Your health dashboard overview</div>
+
+  <div class="grid">
+
+    <!-- Profile completion -->
+    <div class="card">
+      <div class="title">Profile Completion</div>
+      <div class="stat" id="profilePercent">--%</div>
+      <a class="btn" href="patient-profile.html">Update Profile</a>
+    </div>
+
+    <!-- Upcoming appointment -->
+    <div class="card">
+      <div class="title">Upcoming Appointment</div>
+      <div id="upcomingText" class="muted">Loading...</div>
+      <a class="btn" href="patient-appointments.html">View Appointments</a>
+    </div>
+
+    <!-- Dose Tracking -->
+    <div class="card">
+      <div class="title">Dose Tracking</div>
+      <div class="muted" id="doseTrack">Fetching...</div>
+      <a class="btn" href="patient-dose-tracking.html">See Details</a>
+    </div>
+
+    <!-- Quick Vaccines -->
+    <div class="card">
+      <div class="title">Available Vaccines</div>
+      <div class="muted" id="vaccinePreview">Loading...</div>
+      <a class="btn" href="patient-vaccines.html">View All</a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem("authToken");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  if(!token){
+    alert("Please login first.");
+    location.href = "login.html";
+    return;
+  }
+
+  if(user.role !== "patient"){
+    alert("You are not a patient user!");
+    location.href = "dashboard-admin.html";
+    return;
+  }
+
+  // Welcome message
+  document.getElementById("welcome").innerText = "Welcome, " + user.name;
+
+  //----------------------------
+  // NOTIFICATIONS COUNT
+  //----------------------------
+  let nn = await fetch("/api/notifications",{
+    headers:{ "Authorization":"Bearer "+token }
+  });
+  let noti = await nn.json();
+  if(noti.length){
+    let badge = document.getElementById("notifCount");
+    badge.style.display="inline-block";
+    badge.innerText = noti.length;
+  }
+
+  //----------------------------
+  // PROFILE COMPLETION CALC
+  //----------------------------
+  let pc = 50;
+  if(user.address) pc+=10;
+  if(user.age) pc+=10;
+  if(user.gender) pc+=10;
+  if(user.history) pc+=10;
+  if(user.id_proof) pc+=10;
+  if(pc > 100) pc = 100;
+
+  document.getElementById("profilePercent").innerText = pc+"%";
+
+  //----------------------------
+  // UPCOMING APPOINTMENT
+  //----------------------------
+  let ap = await fetch("/api/appointments",{
+    headers:{ "Authorization":"Bearer "+token }
+  });
+  let aps = await ap.json();
+
+  if(aps.length){
+    let upcoming = aps.find(a => a.status === "booked" || a.status==="pending");
+    if(upcoming){
+      document.getElementById("upcomingText").innerHTML =
+      `<b>${upcoming.vaccine_name}</b><br>${new Date(upcoming.appointment_date).toLocaleString()}`;
+    } else {
+      document.getElementById("upcomingText").innerText = "No upcoming appointment.";
+    }
+  } else document.getElementById("upcomingText").innerText = "No appointments.";
+
+  //----------------------------
+  // DOSE TRACKING (last record)
+  //----------------------------
+  let vr = await fetch("/api/my/vaccinations",{
+    headers:{ "Authorization":"Bearer "+token }
+  });
+  let vac = await vr.json();
+
+  if(vac.length){
+    let last = vac[vac.length-1];
+    if(last.dose_no == 1){
+      document.getElementById("doseTrack").innerText =
+      "1st dose completed. Next dose due: " + new Date(last.next_due).toLocaleDateString();
+    }
+    else if(last.dose_no >= 2){
+      document.getElementById("doseTrack").innerText = "All required doses completed.";
+    }
+  } else {
+    document.getElementById("doseTrack").innerText = "No doses taken yet.";
+  }
+
+  //----------------------------
+  // VACCINE PREVIEW (3 items)
+  //----------------------------
+  let vx = await fetch("/api/vaccines",{
+    headers:{ "Authorization":"Bearer "+token }
+  });
+  let vaccines = await vx.json();
+
+  if(vaccines.length){
+    document.getElementById("vaccinePreview").innerHTML =
+    vaccines.slice(0,3).map(v=>`• ${v.name}`).join("<br>");
+  } else document.getElementById("vaccinePreview").innerText = "No vaccines available.";
+
+  //----------------------------
+  // LOGOUT
+  //----------------------------
+  document.getElementById("logoutBtn").onclick = ()=>{
+    localStorage.clear();
+    location.href="login.html";
+  };
+
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

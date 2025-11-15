@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inventory Management — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{
+  --accent:#2563eb;
+  --muted:#6b7280;
+  --bg:#f4f7ff;
+  --card:#fff;
+  --danger:#ef4444;
+  --ok:#10b981;
+  --radius:14px;
+  font-family:Inter,system-ui,Arial;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#0f172a}
+header{
+  background:white;padding:14px 20px;border-bottom:1px solid #e6eef8;display:flex;align-items:center;justify-content:space-between;
+}
+.logo{font-weight:900;color:var(--accent)}
+nav a{margin-left:10px;text-decoration:none;color:var(--muted);padding:8px 12px;border-radius:10px}
+nav a.active{background:#eef4ff;color:var(--accent);font-weight:700}
+.wrap{max-width:1100px;margin:26px auto;padding:16px}
+h1{font-size:24px;margin-bottom:6px}
+.small{color:var(--muted);font-size:14px}
+
+/* layout */
+.controls{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.btn{background:var(--accent);color:white;padding:9px 14px;border-radius:10px;border:none;cursor:pointer;font-weight:700}
+.btn.ghost{background:#fff;border:1px solid #e6eef8;color:var(--accent)}
+.btn.red{background:var(--danger)}
+.search{padding:10px;border-radius:10px;border:1px solid #e6eef8;width:260px}
+
+.card{background:var(--card);padding:14px;border-radius:12px;margin-top:16px;box-shadow:0 10px 28px rgba(10,30,80,0.04)}
+.table{width:100%;border-collapse:collapse;margin-top:12px}
+.table th,.table td{padding:10px;text-align:left;border-bottom:1px solid #eef3ff;font-size:14px}
+.table th{background:#fafcff;font-weight:700}
+.badge{padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px;color:white}
+.low{background:var(--danger)}
+.ok{background:var(--ok)}
+.actions{display:flex;gap:8px}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(6,8,20,0.45);display:none;align-items:center;justify-content:center;z-index:60}
+.modal.show{display:flex}
+.modal-box{background:white;padding:18px;border-radius:12px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
+.label{font-weight:700;margin-top:10px;display:block}
+.input,select{width:100%;padding:10px;border-radius:10px;border:1px solid #e6eef8;margin-top:8px;font-size:14px}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+.inline{display:inline-block}
+.empty{padding:20px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html">Dashboard</a>
+    <a href="admin-vaccines.html">Vaccines</a>
+    <a href="admin-centers.html">Centers</a>
+    <a href="admin-inventory.html" class="active">Inventory</a>
+    <a href="admin-appointments.html">Appointments</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;padding:8px 10px;border-radius:8px">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Inventory Management</h1>
+  <div class="small">Manage vaccine batches: add new incoming batches, update quantities, set expiry dates and monitor low-stock batches.</div>
+
+  <div class="controls">
+    <input id="search" class="search" placeholder="Search vaccine or batch no...">
+    <select id="filterVaccine" class="input" style="width:260px">
+      <option value="">Filter: All Vaccines</option>
+    </select>
+
+    <button class="btn" id="btnAdd">+ Add Batch</button>
+    <button class="btn ghost" id="btnRefresh">Refresh</button>
+
+    <div style="margin-left:auto" class="note" id="statsNote">Loading...</div>
+  </div>
+
+  <div class="card">
+    <table class="table" id="invTable">
+      <thead>
+        <tr>
+          <th>Vaccine</th>
+          <th>Batch No</th>
+          <th>Quantity</th>
+          <th>Expiry Date</th>
+          <th>Last Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="invBody"></tbody>
+    </table>
+
+    <div id="empty" class="empty" style="display:none">No inventory batches found.</div>
+  </div>
+</div>
+
+<!-- MODAL: Add/Edit -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong id="modalTitle">Add Batch</strong>
+      <button id="closeModal" style="background:#ef4444;border:none;color:white;padding:6px 10px;border-radius:8px;cursor:pointer">Close</button>
+    </div>
+
+    <label class="label">Vaccine</label>
+    <select id="modalVaccine" class="input"></select>
+
+    <label class="label">Batch No</label>
+    <input id="modalBatch" class="input" placeholder="Batch number or code">
+
+    <label class="label">Quantity</label>
+    <input id="modalQty" type="number" class="input" min="0" value="0">
+
+    <label class="label">Expiry Date</label>
+    <input id="modalExpiry" type="date" class="input">
+
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn" id="saveBtn">Save</button>
+      <button class="btn ghost" id="cancelBtn">Cancel</button>
+    </div>
+
+    <div class="note">Tip: Use small expiry dates for soon-to-expire batches so they appear as priority.</div>
+  </div>
+</div>
+
+<script>
+(async function(){
+  // helpers
+  const $ = id => document.getElementById(id);
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  if(!token){ alert('Please login'); location.href='login.html'; return; }
+  if(user.role !== 'admin'){ alert('Access denied'); location.href='dashboard-patient.html'; return; }
+
+  // elements
+  const invBody = $('invBody');
+  const empty = $('empty');
+  const search = $('search');
+  const filterVaccine = $('filterVaccine');
+  const btnAdd = $('btnAdd');
+  const btnRefresh = $('btnRefresh');
+  const statsNote = $('statsNote');
+
+  // modal elements
+  const modal = $('modal');
+  const closeModal = $('closeModal');
+  const modalTitle = $('modalTitle');
+  const modalVaccine = $('modalVaccine');
+  const modalBatch = $('modalBatch');
+  const modalQty = $('modalQty');
+  const modalExpiry = $('modalExpiry');
+  const saveBtn = $('saveBtn');
+  const cancelBtn = $('cancelBtn');
+
+  let inventory = [];
+  let vaccines = [];
+  let editId = null;
+
+  // load vaccines & inventory
+  async function loadAll(){
+    invBody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+    try{
+      const [vRes, iRes] = await Promise.all([
+        fetch('/api/vaccines', { headers: { 'Authorization': 'Bearer ' + token }}),
+        fetch('/api/inventory', { headers: { 'Authorization': 'Bearer ' + token }})
+      ]);
+      vaccines = await vRes.json();
+      inventory = await iRes.json();
+
+      populateVaccineFilter();
+      renderInventory();
+      updateStats();
+    }catch(e){
+      console.error('loadAll err', e);
+      invBody.innerHTML = '<tr><td colspan="6">Error loading data.</td></tr>';
+    }
+  }
+
+  function populateVaccineFilter(){
+    filterVaccine.innerHTML = '<option value="">Filter: All Vaccines</option>';
+    modalVaccine.innerHTML = '<option value="">-- Select vaccine --</option>';
+    vaccines.forEach(v=>{
+      const o = document.createElement('option'); o.value = v.id; o.innerText = v.name; filterVaccine.appendChild(o);
+      const o2 = document.createElement('option'); o2.value = v.id; o2.innerText = v.name; modalVaccine.appendChild(o2);
+    });
+  }
+
+  function renderInventory(){
+    invBody.innerHTML = '';
+    const q = search.value.trim().toLowerCase();
+    const fid = filterVaccine.value;
+
+    const rows = (inventory || []).filter(it=>{
+      if(fid && String(it.vaccine_id) !== String(fid)) return false;
+      if(!q) return true;
+      return (it.vaccine_name || '').toLowerCase().includes(q) || (it.batch_no || '').toLowerCase().includes(q);
+    });
+
+    if(rows.length === 0){
+      empty.style.display = 'block';
+      return;
+    } else empty.style.display = 'none';
+
+    rows.forEach(it=>{
+      const tr = document.createElement('tr');
+
+      // expiry highlight
+      const today = new Date().toISOString().slice(0,10);
+      const isExpired = it.expiry_date && it.expiry_date < today;
+      const lowClass = Number(it.quantity) <= 5 ? 'low' : 'ok';
+
+      tr.innerHTML = `
+        <td>${escapeHtml(it.vaccine_name || '—')}</td>
+        <td>${escapeHtml(it.batch_no || '—')}</td>
+        <td>${Number(it.quantity || 0)}</td>
+        <td>${it.expiry_date ? it.expiry_date : '—'} ${isExpired ? '<span style="color:var(--danger);font-weight:700;margin-left:8px">(Expired)</span>' : ''}</td>
+        <td>${it.updated_at ? new Date(it.updated_at).toLocaleString() : '—'}</td>
+        <td>
+          <div class="actions">
+            <button class="btn ghost" onclick="editBatch(${it.id})">Edit</button>
+            <button class="btn" onclick="quickAdd(${it.id}, 1)">+1</button>
+            <button class="btn ghost" onclick="quickAdd(${it.id}, -1)">-1</button>
+            <button class="btn red" onclick="deleteBatch(${it.id})">Delete</button>
+          </div>
+        </td>
+      `;
+      invBody.appendChild(tr);
+    });
+  }
+
+  function updateStats(){
+    const total = (inventory || []).reduce((s,i)=> s + Number(i.quantity||0),0);
+    const lowCount = (inventory || []).filter(i=> Number(i.quantity) <= 5).length;
+    statsNote.innerText = `Total quantity: ${total} • Low batches: ${lowCount}`;
+  }
+
+  // Escape html
+  function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  // --------- actions exposed globally ---------
+  window.editBatch = async function(id){
+    editId = id;
+    modalTitle.innerText = 'Edit Batch';
+    const res = await fetch('/api/inventory/'+id, { headers: { 'Authorization': 'Bearer ' + token }});
+    const data = await res.json();
+    modalVaccine.value = data.vaccine_id || '';
+    modalBatch.value = data.batch_no || '';
+    modalQty.value = data.quantity || 0;
+    modalExpiry.value = data.expiry_date ? data.expiry_date.slice(0,10) : '';
+    modal.classList.add('show');
+  };
+
+  window.quickAdd = async function(id, delta){
+    try{
+      const res = await fetch('/api/inventory/'+id+'/adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ delta })
+      });
+      const out = await res.json();
+      if(out.success){ await loadAll(); } else alert(out.msg || 'Failed');
+    }catch(e){ alert('Network error'); }
+  };
+
+  window.deleteBatch = async function(id){
+    if(!confirm('Delete this batch?')) return;
+    try{
+      const res = await fetch('/api/inventory/'+id, { method:'DELETE', headers:{ Authorization: 'Bearer ' + token }});
+      const out = await res.json();
+      if(out.success) loadAll(); else alert(out.msg || 'Delete failed');
+    }catch(e){ alert('Error'); }
+  };
+
+  // ---------- modal save ----------
+  saveBtn.addEventListener('click', async ()=>{
+    const payload = {
+      vaccine_id: modalVaccine.value,
+      batch_no: modalBatch.value.trim(),
+      quantity: Number(modalQty.value || 0),
+      expiry_date: modalExpiry.value || null
+    };
+
+    if(!payload.vaccine_id){ alert('Select vaccine'); return; }
+    if(!payload.batch_no){ alert('Enter batch no'); return; }
+
+    let url = '/api/inventory';
+    let method = 'POST';
+    if(editId){ url = '/api/inventory/'+editId; method = 'PUT'; }
+
+    saveBtn.disabled = true;
+    saveBtn.innerText = 'Saving...';
+
+    try{
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify(payload)
+      });
+      const out = await res.json();
+      if(out.success){ modal.classList.remove('show'); loadAll(); }
+      else alert(out.msg || 'Save failed');
+    }catch(e){ alert('Network error'); }
+    saveBtn.disabled = false; saveBtn.innerText = 'Save';
+  });
+
+  cancelBtn.addEventListener('click', ()=> modal.classList.remove('show'));
+  closeModal.addEventListener('click', ()=> modal.classList.remove('show'));
+
+  // add new
+  btnAdd.addEventListener('click', ()=>{
+    editId = null;
+    modalTitle.innerText = 'Add Batch';
+    modalVaccine.value = '';
+    modalBatch.value = '';
+    modalQty.value = 0;
+    modalExpiry.value = '';
+    modal.classList.add('show');
+  });
+
+  btnRefresh.addEventListener('click', loadAll);
+
+  // search/filter
+  search.addEventListener('input', renderInventory);
+  filterVaccine.addEventListener('change', renderInventory);
+
+  // initial
+  await loadAll();
+
+  // logout
+  $('logoutBtn').addEventListener('click', ()=> { localStorage.clear(); location.href='login.html'; });
+
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

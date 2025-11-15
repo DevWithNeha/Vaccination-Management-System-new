@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dose Tracking — Patient</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#2563eb;
+  --ok:#10b981;
+  --warn:#f59e0b;
+  --danger:#ef4444;
+  --bg:#f6f9ff;
+  --card:#fff;
+  --muted:#6b7280;
+  --radius:14px;
+  font-family:Inter,system-ui,Arial;
+}
+body{margin:0;background:var(--bg);color:#0f172a}
+header{
+  background:white;padding:12px 18px;border-bottom:1px solid #e6eef8;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;
+}
+nav a{
+  margin-left:10px;text-decoration:none;color:var(--muted);
+  padding:8px 12px;border-radius:10px;font-weight:600;
+}
+nav a.active,nav a:hover{
+  background:#eef4ff;color:var(--accent);
+}
+.logout{
+  background:#ef4444;color:white;padding:8px 10px;border-radius:10px;text-decoration:none
+}
+.wrap{max-width:1000px;margin:24px auto;padding:14px}
+h1{margin:0;font-size:24px;font-weight:800}
+.muted{color:var(--muted);margin-top:6px}
+
+.card{
+  background:var(--card);padding:18px;border-radius:var(--radius);
+  box-shadow:0 10px 22px rgba(10,30,80,0.06);margin-top:20px;
+}
+
+.timeline{
+  margin-top:14px;border-left:3px solid #d9e4ff;padding-left:18px;
+}
+.item{margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #eef2ff}
+.item:last-child{border-bottom:none}
+
+.date{font-weight:700;color:var(--accent)}
+.vname{font-weight:800;margin-top:4px}
+.badge{
+  display:inline-block;padding:4px 10px;border-radius:16px;font-size:13px;
+  font-weight:700;margin-top:6px;color:white;
+}
+.badge.done{background:var(--ok)}
+.badge.booster{background:var(--warn)}
+.badge.first{background:var(--accent)}
+.small{font-size:13px;color:var(--muted);margin-top:4px}
+.nextBox{
+  background:#eef4ff;padding:14px;border-radius:12px;margin-top:12px;
+}
+.nextTitle{font-weight:800;margin-bottom:6px}
+.nextDate{font-weight:700;color:var(--accent)}
+.note{font-size:13px;color:var(--muted)}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo" style="font-weight:800;color:var(--accent)">Vaccination Portal</div>
+  <nav>
+    <a href="dashboard-patient.html">Dashboard</a>
+    <a href="patient-profile.html">Profile</a>
+    <a href="patient-vaccines.html">Vaccines</a>
+    <a href="patient-appointment-book.html">Book Appointment</a>
+    <a href="patient-appointments.html">My Appointments</a>
+    <a class="active" href="patient-dose-tracking.html">Dose Tracking</a>
+    <a href="patient-certificates.html">Certificates</a>
+    <a href="patient-notifications.html">Notifications</a>
+    <a href="patient-feedback.html">Feedback</a>
+    <a class="logout" id="logoutBtn">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Dose Tracking</h1>
+  <div class="muted">Track your taken doses & view next recommended dose.</div>
+
+  <div id="mainCard" class="card">
+    <div id="loader">Loading your vaccination timeline...</div>
+    <div id="timeline" class="timeline" style="display:none"></div>
+    <div id="nextBox" class="nextBox" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem("authToken");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  if(!token){
+    alert("Please login first!");
+    location.href="login.html";
+    return;
+  }
+  if(user.role !== "patient"){
+    alert("Access denied");
+    location.href="dashboard-admin.html";
+    return;
+  }
+
+  document.getElementById("logoutBtn").onclick = ()=>{ 
+    localStorage.clear();
+    location.href="login.html";
+  };
+
+  const timeline = document.getElementById("timeline");
+  const loader = document.getElementById("loader");
+  const nextBox = document.getElementById("nextBox");
+
+  let doses = [];
+
+  try{
+    const res = await fetch("/api/my/vaccinations",{
+      headers:{ "Authorization":"Bearer "+token }
+    });
+    doses = await res.json();
+
+    loader.style.display="none";
+
+    if(!Array.isArray(doses) || doses.length === 0){
+      timeline.innerHTML = `<div class="muted">You have not taken any dose yet.</div>`;
+      timeline.style.display="block";
+      return;
+    }
+
+    // Sort by date
+    doses.sort((a,b)=> new Date(a.given_on) - new Date(b.given_on));
+
+    renderTimeline();
+    renderNextDose();
+
+  }catch(err){
+    loader.innerText = "Error loading dose history!";
+  }
+
+  function renderTimeline(){
+    timeline.innerHTML="";
+    timeline.style.display="block";
+
+    doses.forEach(d=>{
+      const box = document.createElement("div");
+      box.className="item";
+
+      const given = new Date(d.given_on);
+
+      box.innerHTML = `
+        <div class="date">${given.toLocaleDateString()} – ${given.toLocaleTimeString()}</div>
+        <div class="vname">${escape(d.vaccine_name || "Vaccine")}</div>
+        <div class="small">Dose No: <b>${d.dose_no}</b></div>
+        <div class="small">Given By: ${escape(d.staff_name || "Staff")}</div>
+        <div class="small">Appointment: ${d.appointment_id || "-"}</div>
+      `;
+
+      let badge = document.createElement("div");
+      if(d.dose_no === 1) badge.className="badge first", badge.innerText="1st Dose";
+      else if(d.dose_no === 2) badge.className="badge done", badge.innerText="2nd Dose Done";
+      else badge.className="badge booster", badge.innerText=`Booster ${d.dose_no}`;
+
+      box.appendChild(badge);
+
+      timeline.appendChild(box);
+    });
+  }
+
+  function renderNextDose(){
+
+    // Latest dose
+    const last = doses[doses.length-1];
+    const lastDate = new Date(last.given_on);
+
+    let nextDose = last.dose_no + 1;
+    let dueDays = 28; // Recommended gap for next dose (example)
+
+    const dueDate = new Date(lastDate);
+    dueDate.setDate(dueDate.getDate() + dueDays);
+
+    nextBox.style.display="block";
+    nextBox.innerHTML = `
+      <div class="nextTitle">Next Recommended Dose</div>
+      <div class="note">Based on your last dose (#${last.dose_no}) taken on ${lastDate.toLocaleDateString()}:</div>
+      <div class="nextDate">${nextDose}ᵗʰ dose recommended on ${dueDate.toLocaleDateString()}</div>
+      <div class="note" style="margin-top:6px;">You can book this dose after due date.</div>
+    `;
+  }
+
+  function escape(s){
+    if(!s) return "";
+    return s.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+  }
+
+})();
+</script>
+
+</body>
+</html>

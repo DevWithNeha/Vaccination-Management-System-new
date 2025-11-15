@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Manage Centers — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#2563eb;
+  --danger:#ef4444;
+  --muted:#6b7280;
+  --bg:#eef1ff;
+  --card:#fff;
+  --radius:16px;
+  font-family:Inter,system-ui,Arial;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f5f7ff;color:#0f172a}
+
+header{
+  background:white;padding:14px 22px;border-bottom:1px solid #e5e9f5;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.logo{font-size:24px;font-weight:900;color:var(--accent)}
+
+nav a{
+  margin-left:10px;text-decoration:none;padding:8px 14px;
+  font-weight:600;color:var(--muted);border-radius:10px;
+}
+nav a:hover{background:#eaf1ff;color:var(--accent)}
+nav a.active{background:#eaf1ff;color:var(--accent);font-weight:700}
+
+.wrap{max-width:1050px;margin:30px auto;padding:15px}
+h1{font-size:26px;font-weight:900;margin-bottom:10px}
+
+.btn{
+  background:var(--accent);color:white;border:none;border-radius:10px;
+  padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;
+}
+.btn.red{background:var(--danger)}
+.btn.ghost{background:#f8faff;border:1px solid #dce5ff;color:var(--accent)}
+
+.card{
+  background:white;padding:20px;border-radius:var(--radius);
+  box-shadow:0 10px 22px rgba(20,20,60,0.05);margin-top:16px;
+}
+
+table{
+  width:100%;border-collapse:collapse;margin-top:20px;
+}
+td,th{
+  padding:10px;border-bottom:1px solid #e8ecff;font-size:14px;
+}
+th{text-align:left;background:#f6f8ff;font-weight:700}
+
+.modal{
+  position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);
+  display:flex;align-items:center;justify-content:center;
+  visibility:hidden;opacity:0;transition:.2s;
+}
+.modal.active{visibility:visible;opacity:1}
+.modal-box{
+  background:white;width:400px;padding:20px;border-radius:16px;
+  box-shadow:0 10px 25px rgba(0,0,0,0.15);
+}
+.modal-box h2{
+  font-size:20px;font-weight:800;margin-bottom:10px;
+}
+input,textarea{
+  width:100%;padding:10px;border-radius:10px;border:1px solid #dce3ff;
+  margin-top:8px;font-size:14px;
+}
+.close{
+  float:right;color:var(--danger);cursor:pointer;font-weight:900;font-size:22px;
+}
+textarea{height:70px;resize:none}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html">Dashboard</a>
+    <a href="admin-vaccines.html">Vaccines</a>
+    <a href="admin-centers.html" class="active">Centers</a>
+    <a href="admin-inventory.html">Inventory</a>
+    <a href="admin-appointments.html">Appointments</a>
+    <a href="admin-records.html">Records</a>
+    <a href="admin-feedback.html">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <h1>Manage Centers</h1>
+  <button class="btn" id="btnAdd">+ Add Center</button>
+
+  <div class="card">
+    <table id="centerTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Address</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal" id="centerModal">
+  <div class="modal-box">
+    <span class="close" id="closeModal">&times;</span>
+    <h2 id="modalTitle">Add Center</h2>
+
+    <label>Name</label>
+    <input type="text" id="cName">
+
+    <label style="margin-top:10px">Address</label>
+    <textarea id="cAddress"></textarea>
+
+    <button class="btn" style="margin-top:14px" id="btnSave">Save</button>
+  </div>
+</div>
+
+
+<script>
+(async function () {
+
+  const token = localStorage.getItem("authToken");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  if (!token) return location.href = "login.html";
+  if (user.role !== "admin") return location.href = "dashboard-patient.html";
+
+  const modal = document.getElementById("centerModal");
+  const btnAdd = document.getElementById("btnAdd");
+  const closeModal = document.getElementById("closeModal");
+  const btnSave = document.getElementById("btnSave");
+
+  const cName = document.getElementById("cName");
+  const cAddress = document.getElementById("cAddress");
+  const tbody = document.querySelector("#centerTable tbody");
+
+  let editId = null;
+
+  // Show modal
+  btnAdd.onclick = () => {
+    editId = null;
+    cName.value = "";
+    cAddress.value = "";
+    modal.classList.add("active");
+    document.getElementById("modalTitle").textContent = "Add Center";
+  };
+
+  closeModal.onclick = () => modal.classList.remove("active");
+
+  // Load centers
+  async function loadCenters() {
+    tbody.innerHTML = "<tr><td colspan='3'>Loading...</td></tr>";
+
+    const res = await fetch("/api/centers", {
+      headers: { Authorization: "Bearer " + token }
+    });
+
+    const data = await res.json();
+    tbody.innerHTML = "";
+
+    data.forEach(c => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${c.name}</td>
+        <td>${c.address || "-"}</td>
+        <td>
+          <button class="btn ghost" onclick="editCenter(${c.id})">Edit</button>
+          <button class="btn red" onclick="deleteCenter(${c.id})">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+  loadCenters();
+
+  // expose global functions
+  window.editCenter = async (id) => {
+    editId = id;
+
+    const res = await fetch("/api/centers/" + id, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    const c = await res.json();
+
+    cName.value = c.name;
+    cAddress.value = c.address;
+
+    document.getElementById("modalTitle").textContent = "Edit Center";
+    modal.classList.add("active");
+  };
+
+  window.deleteCenter = async (id) => {
+    if (!confirm("Delete this center?")) return;
+
+    const res = await fetch("/api/centers/" + id, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer " + token }
+    });
+
+    const out = await res.json();
+    if (out.success) {
+      alert("Deleted");
+      loadCenters();
+    } else {
+      alert(out.msg || "Delete failed");
+    }
+  };
+
+  // SAVE center (add/edit)
+  btnSave.onclick = async () => {
+    const payload = {
+      name: cName.value,
+      address: cAddress.value
+    };
+
+    let url = "/api/centers";
+    let method = "POST";
+
+    if (editId) {
+      url = "/api/centers/" + editId;
+      method = "PUT";
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const out = await res.json();
+    if (out.success) {
+      alert("Saved");
+      modal.classList.remove("active");
+      loadCenters();
+    } else {
+      alert(out.msg || "Error saving");
+    }
+  };
+
+  document.getElementById("logoutBtn").onclick = () => {
+    localStorage.clear();
+    location.href = "login.html";
+  };
+
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Manage Appointments — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{
+  --accent:#2563eb;
+  --muted:#6b7280;
+  --bg:#f6f9ff;
+  --card:#fff;
+  --danger:#ef4444;
+  --ok:#10b981;
+  --radius:14px;
+  font-family:Inter,system-ui,Arial;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#0f172a}
+header{
+  background:white;padding:12px 18px;border-bottom:1px solid #e6eef8;display:flex;align-items:center;justify-content:space-between;
+}
+.logo{font-weight:800;color:var(--accent)}
+nav a{margin-left:10px;text-decoration:none;color:var(--muted);padding:8px 12px;border-radius:8px;font-weight:600}
+nav a.active{background:#eef4ff;color:var(--accent);font-weight:700}
+
+.wrap{max-width:1200px;margin:20px auto;padding:14px}
+h1{margin:0;font-size:22px;font-weight:800}
+.small{font-size:13px;color:var(--muted);margin-top:6px}
+
+.controls{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.input,select{padding:10px;border-radius:10px;border:1px solid #e6eef8}
+.btn{background:var(--accent);color:white;padding:9px 12px;border-radius:10px;border:none;cursor:pointer;font-weight:700}
+.btn.ghost{background:#fff;border:1px solid #e6eef8;color:var(--accent)}
+.btn.red{background:var(--danger)}
+.table{width:100%;border-collapse:collapse;margin-top:14px;background:white;border-radius:12px;overflow:hidden;box-shadow:0 10px 28px rgba(10,30,80,0.04)}
+.table th,.table td{padding:12px;border-bottom:1px solid #eef4ff;text-align:left;font-size:14px}
+.table th{background:#f9fbff;font-weight:800}
+
+.tag{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:800;color:white;font-size:13px}
+.tag.booked{background:#f59e0b}
+.tag.confirmed{background:var(--accent)}
+.tag.completed{background:var(--ok)}
+.tag.cancelled{background:var(--danger)}
+
+.modal{position:fixed;inset:0;background:rgba(6,8,20,0.45);display:none;align-items:center;justify-content:center;z-index:60}
+.modal.show{display:flex}
+.modal-box{background:white;padding:18px;border-radius:12px;width:760px;max-width:95%;box-shadow:0 30px 80px rgba(0,0,0,0.2)}
+.row{display:flex;gap:12px;align-items:center}
+.col{flex:1}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.small-muted{font-size:13px;color:var(--muted)}
+.empty{padding:20px;text-align:center;color:var(--muted);background:white;border-radius:12px;margin-top:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html">Dashboard</a>
+    <a href="admin-vaccines.html">Vaccines</a>
+    <a href="admin-centers.html">Centers</a>
+    <a href="admin-inventory.html">Inventory</a>
+    <a href="admin-appointments.html" class="active">Appointments</a>
+    <a href="admin-records.html">Records</a>
+    <a href="admin-feedback.html">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;padding:8px 10px;border-radius:8px">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Appointments</h1>
+  <div class="small">Manage bookings: view, assign staff, change status, mark completed and create vaccination records.</div>
+
+  <div class="controls">
+    <input id="search" class="input" placeholder="Search patient, vaccine, center...">
+    <select id="filterStatus" class="input">
+      <option value="">All statuses</option>
+      <option value="booked">Booked</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="completed">Completed</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+
+    <select id="filterCenter" class="input" style="min-width:220px">
+      <option value="">All Centers</option>
+    </select>
+
+    <button class="btn ghost" id="btnRefresh">Refresh</button>
+    <div style="margin-left:auto" class="small-muted" id="countInfo"></div>
+  </div>
+
+  <div id="tableWrap" style="margin-top:14px">
+    <table class="table" id="apptTable">
+      <thead>
+        <tr>
+          <th>Patient</th>
+          <th>Vaccine</th>
+          <th>Center / Slot</th>
+          <th>Appointment Date</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="apptBody"></tbody>
+    </table>
+  </div>
+
+  <div id="empty" class="empty" style="display:none">No appointments found.</div>
+</div>
+
+<!-- DETAILS / ACTIONS MODAL -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 id="mTitle">Appointment</h3>
+      <button id="mClose" style="background:#ef4444;border:none;color:white;padding:8px 10px;border-radius:8px;cursor:pointer">Close</button>
+    </div>
+
+    <div style="margin-top:12px;display:flex;gap:16px">
+      <div style="flex:1">
+        <div id="mLeft"></div>
+        <div class="small-muted" style="margin-top:10px" id="mNotes"></div>
+      </div>
+      <div style="width:320px">
+        <div style="font-weight:800">Actions</div>
+        <div style="margin-top:10px" id="mActions" class="actions"></div>
+
+        <div style="margin-top:16px">
+          <label class="small-muted">Assign Staff</label>
+          <select id="staffSel" class="input" style="width:100%;margin-top:8px"></select>
+          <button class="btn" id="assignBtn" style="margin-top:10px">Assign</button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(async function(){
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if(!token){ alert('Login first'); location.href='login.html'; return; }
+  if(user.role !== 'admin'){ alert('Only admin allowed'); location.href='dashboard-patient.html'; return; }
+
+  const apptBody = document.getElementById('apptBody');
+  const empty = document.getElementById('empty');
+  const search = document.getElementById('search');
+  const filterStatus = document.getElementById('filterStatus');
+  const filterCenter = document.getElementById('filterCenter');
+  const btnRefresh = document.getElementById('btnRefresh');
+  const countInfo = document.getElementById('countInfo');
+
+  const modal = document.getElementById('modal');
+  const mClose = document.getElementById('mClose');
+  const mTitle = document.getElementById('mTitle');
+  const mLeft = document.getElementById('mLeft');
+  const mNotes = document.getElementById('mNotes');
+  const mActions = document.getElementById('mActions');
+  const staffSel = document.getElementById('staffSel');
+  const assignBtn = document.getElementById('assignBtn');
+
+  let appointments = [];
+  let centers = [];
+  let staffList = [];
+  let current = null;
+
+  // load centers, staff, appointments
+  async function loadAll(){
+    apptBody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+    try{
+      const [cRes, sRes, aRes] = await Promise.all([
+        fetch('/api/centers', { headers: { Authorization: 'Bearer ' + token }}),
+        fetch('/api/staff', { headers: { Authorization: 'Bearer ' + token }}), // admin page expects /api/staff
+        fetch('/api/appointments', { headers: { Authorization: 'Bearer ' + token }})
+      ]);
+
+      centers = await cRes.json();
+      staffList = await sRes.json();
+      appointments = await aRes.json();
+
+      populateCenterFilter();
+      populateStaffSelect();
+      renderTable();
+    }catch(e){
+      console.error('loadAll err', e);
+      apptBody.innerHTML = '<tr><td colspan="6">Error loading data.</td></tr>';
+    }
+  }
+
+  function populateCenterFilter(){
+    filterCenter.innerHTML = '<option value="">All Centers</option>';
+    centers.forEach(c => {
+      const o = document.createElement('option'); o.value = c.id; o.innerText = c.name; filterCenter.appendChild(o);
+    });
+  }
+
+  function populateStaffSelect(){
+    staffSel.innerHTML = '<option value="">— select staff —</option>';
+    staffList.forEach(s => {
+      const o = document.createElement('option'); o.value = s.id; o.innerText = s.name + (s.role ? ' • ' + s.role : '');
+      staffSel.appendChild(o);
+    });
+  }
+
+  function statusTag(s){
+    if(!s) return '<span class="tag booked">UNKNOWN</span>';
+    return `<span class="tag ${s}">${s.toUpperCase()}</span>`;
+  }
+
+  function renderTable(){
+    apptBody.innerHTML = '';
+    const q = (search.value || '').toLowerCase();
+    const statusF = filterStatus.value;
+    const centerF = filterCenter.value;
+
+    const rows = (appointments || []).filter(a=>{
+      if(statusF && a.status !== statusF) return false;
+      if(centerF && String(a.center_id) !== String(centerF)) return false;
+      if(!q) return true;
+      return (a.patient_name||'').toLowerCase().includes(q) || (a.vaccine_name||'').toLowerCase().includes(q) || (a.center_name||'').toLowerCase().includes(q);
+    });
+
+    if(rows.length === 0){
+      empty.style.display = 'block'; document.getElementById('tableWrap').style.display = 'none';
+      countInfo.innerText = '0 appointments';
+      return;
+    } else {
+      empty.style.display = 'none'; document.getElementById('tableWrap').style.display = 'block';
+    }
+
+    rows.forEach(a=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escape(a.patient_name || a.patient_id || '—')}</td>
+        <td>${escape(a.vaccine_name || '—')}</td>
+        <td>${escape(a.center_name || '—')}<div class="small-muted">${a.slot || ''}</div></td>
+        <td>${new Date(a.appointment_date).toLocaleString()}</td>
+        <td>${statusTag(a.status)}</td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn ghost" onclick="viewAppt(${a.id})">View</button>
+            <button class="btn" onclick="changeStatus(${a.id}, 'confirmed')">Confirm</button>
+            <button class="btn ghost" onclick="changeStatus(${a.id}, 'cancelled')">Cancel</button>
+            <button class="btn" onclick="markComplete(${a.id})">Mark Complete</button>
+          </div>
+        </td>
+      `;
+      apptBody.appendChild(tr);
+    });
+
+    countInfo.innerText = `${rows.length} shown • ${appointments.length} total`;
+  }
+
+  // global helpers
+  function escape(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  // expose functions
+  window.viewAppt = function(id){
+    current = appointments.find(x=>x.id===id);
+    if(!current) return alert('Not found');
+    mTitle.innerText = `Appointment #${current.id}`;
+    mLeft.innerHTML = `
+      <div style="font-weight:800">${escape(current.patient_name || 'Patient')}</div>
+      <div class="small-muted">${escape(current.vaccine_name || '')}</div>
+      <div class="small-muted" style="margin-top:8px">Center: ${escape(current.center_name||'')}</div>
+      <div class="small-muted">Date: ${new Date(current.appointment_date).toLocaleString()}</div>
+      <div style="margin-top:10px"><strong>Notes:</strong><div class="small-muted">${escape(current.note||'')}</div></div>
+    `;
+    mNotes.innerText = `Booked on: ${new Date(current.created_at).toLocaleString()}`;
+    renderModalActions(current);
+    modal.classList.add('show');
+  };
+
+  function renderModalActions(a){
+    mActions.innerHTML = '';
+    // change status buttons
+    const confirmBtn = document.createElement('button'); confirmBtn.className='btn'; confirmBtn.innerText='Confirm';
+    confirmBtn.onclick = ()=> changeStatus(a.id, 'confirmed');
+    const cancelBtn = document.createElement('button'); cancelBtn.className='btn ghost'; cancelBtn.innerText='Cancel';
+    cancelBtn.onclick = ()=> changeStatus(a.id, 'cancelled');
+    const completeBtn = document.createElement('button'); completeBtn.className='btn'; completeBtn.innerText='Mark Complete';
+    completeBtn.onclick = ()=> markComplete(a.id);
+
+    mActions.appendChild(confirmBtn);
+    mActions.appendChild(cancelBtn);
+    mActions.appendChild(completeBtn);
+  }
+
+  // change status endpoint
+  async function changeStatus(id, status){
+    if(!confirm(`Change status to ${status}?`)) return;
+    try{
+      const res = await fetch(`/api/appointments/${id}/status`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+token},
+        body: JSON.stringify({ status })
+      });
+      const out = await res.json();
+      if(out.success){ await loadAll(); modal.classList.remove('show'); }
+      else alert(out.msg || 'Failed');
+    }catch(e){ alert('Network error'); }
+  }
+
+  // assign staff
+  assignBtn.addEventListener('click', async ()=>{
+    if(!current) return;
+    const staffId = staffSel.value;
+    if(!staffId) return alert('Select staff');
+    try{
+      const res = await fetch(`/api/appointments/${current.id}/assign`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+        body: JSON.stringify({ staff_id: staffId })
+      });
+      const out = await res.json();
+      if(out.success){ alert('Assigned'); await loadAll(); modal.classList.remove('show'); }
+      else alert(out.msg || 'Failed');
+    }catch(e){ alert('Error'); }
+  });
+
+  // mark complete -> create vaccination record
+  async function markComplete(id){
+    if(!confirm('Mark appointment as completed and create vaccination record?')) return;
+    try{
+      const res = await fetch(`/api/appointments/${id}/complete`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token }
+      });
+      const out = await res.json();
+      if(out.success){ alert('Marked completed'); await loadAll(); modal.classList.remove('show'); }
+      else alert(out.msg || 'Failed');
+    }catch(e){ alert('Network error'); }
+  }
+
+  // quick status change from table
+  window.changeStatus = changeStatus;
+  window.markComplete = markComplete;
+
+  // delete or other actions could be added similarly
+
+  // UI event bindings
+  btnRefresh.addEventListener('click', loadAll);
+  search.addEventListener('input', renderTable);
+  filterStatus.addEventListener('change', renderTable);
+  filterCenter.addEventListener('change', renderTable);
+  mClose.addEventListener('click', ()=> modal.classList.remove('show'));
+
+  // initial load
+  await loadAll();
+
+  // logout
+  document.getElementById('logoutBtn').addEventListener('click', ()=> { localStorage.clear(); location.href='login.html'; });
+
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

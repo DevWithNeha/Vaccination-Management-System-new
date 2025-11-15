@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Feedback & Support — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#2563eb;
+  --muted:#6b7280;
+  --danger:#ef4444;
+  --ok:#10b981;
+  --bg:#f4f7ff;
+  --card:#ffffff;
+  --radius:14px;
+  font-family:Inter,system-ui,Arial;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:#0f172a}
+
+header{
+  background:white;padding:12px 20px;border-bottom:1px solid #e6eef8;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.logo{font-weight:900;font-size:22px;color:var(--accent)}
+nav a{
+  margin-left:10px;text-decoration:none;padding:8px 12px;
+  color:var(--muted);border-radius:10px;font-weight:600;
+}
+nav a.active{background:#eaf1ff;color:var(--accent);font-weight:700}
+
+.wrap{max-width:1200px;margin:26px auto;padding:14px}
+h1{font-size:26px;font-weight:900;margin-bottom:4px}
+.small{color:var(--muted);font-size:14px}
+
+/* feedback card */
+.card{
+  background:white;border-radius:14px;padding:20px;
+  box-shadow:0 10px 26px rgba(10,30,80,0.04);
+  border:1px solid #e6eef8;margin-top:18px;
+}
+
+.fb-header{display:flex;align-items:center;justify-content:space-between}
+.fb-user{font-weight:800;font-size:16px}
+.fb-date{color:var(--muted);font-size:13px}
+
+.fb-message{margin-top:10px;font-size:15px;line-height:1.6}
+.fb-status{margin-top:12px;font-size:13px;font-weight:700;display:inline-block;padding:4px 10px;border-radius:8px}
+.open{background:#dbeafe;color:#2563eb}
+.closed{background:#fee2e2;color:#b91c1c}
+
+.actions{display:flex;gap:10px;margin-top:14px}
+.btn{background:var(--accent);color:white;border:none;padding:8px 12px;border-radius:10px;cursor:pointer;font-weight:700}
+.btn.red{background:var(--danger)}
+.btn.ghost{background:white;border:1px solid #e6eef8;color:var(--accent)}
+
+/* modal */
+.modal{
+  position:fixed;inset:0;background:rgba(0,0,0,0.45);display:none;
+  align-items:center;justify-content:center;
+}
+.modal.show{display:flex}
+.modal-box{
+  background:white;width:450px;border-radius:16px;padding:18px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.2)
+}
+.label{font-weight:700;margin-top:10px}
+.input,textarea{
+  width:100%;padding:10px;border-radius:10px;
+  border:1px solid #e6eef8;margin-top:6px;font-size:14px;
+}
+textarea{resize:none;height:100px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html">Dashboard</a>
+    <a href="admin-vaccines.html">Vaccines</a>
+    <a href="admin-centers.html">Centers</a>
+    <a href="admin-inventory.html">Inventory</a>
+    <a href="admin-appointments.html">Appointments</a>
+    <a href="admin-records.html">Records</a>
+    <a href="admin-feedback.html" class="active">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;padding:8px 12px;border-radius:10px">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Feedback & Support</h1>
+  <div class="small">View patient complaints, support queries, and service feedback. Reply and manage status.</div>
+
+  <div id="feedbackList"></div>
+  <div id="empty" class="card" style="display:none;text-align:center;color:var(--muted)">No feedback found.</div>
+</div>
+
+<!-- MODAL -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <strong id="modalTitle">Reply</strong>
+      <button id="closeModal" style="background:#ef4444;color:white;border:none;padding:6px 12px;border-radius:8px;cursor:pointer">Close</button>
+    </div>
+
+    <label class="label">Reply Message</label>
+    <textarea id="replyText"></textarea>
+
+    <button id="sendBtn" class="btn" style="margin-top:14px;width:100%">Send Reply</button>
+  </div>
+</div>
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  if(!token){ location.href='login.html'; return; }
+  if(user.role !== 'admin'){ location.href='dashboard-patient.html'; return; }
+
+  const fbList = document.getElementById('feedbackList');
+  const empty = document.getElementById('empty');
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const replyText = document.getElementById('replyText');
+  const sendBtn = document.getElementById('sendBtn');
+  const closeModal = document.getElementById('closeModal');
+
+  let feedbacks = [];
+  let current = null;
+
+  async function loadFeedback(){
+    fbList.innerHTML = "<div class='card'>Loading...</div>";
+
+    const res = await fetch('/api/feedback',{headers:{Authorization:'Bearer '+token}});
+    feedbacks = await res.json();
+
+    renderFeedback();
+  }
+
+  function renderFeedback(){
+    fbList.innerHTML = '';
+    if(feedbacks.length === 0){
+      empty.style.display='block';
+      return;
+    }
+    empty.style.display='none';
+
+    feedbacks.forEach(f=>{
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `
+        <div class="fb-header">
+          <div class="fb-user">${escape(f.patient_name || "Patient")}</div>
+          <div class="fb-date">${new Date(f.created_at).toLocaleString()}</div>
+        </div>
+
+        <div class="fb-message">${escape(f.message)}</div>
+
+        <div class="fb-status ${f.status === 'closed' ? 'closed':'open'}">
+          ${f.status.toUpperCase()}
+        </div>
+
+        <div class="actions">
+          <button class="btn ghost" onclick="replyFB(${f.id})">Reply</button>
+          <button class="btn" onclick="closeFB(${f.id})">Close</button>
+          <button class="btn red" onclick="deleteFB(${f.id})">Delete</button>
+        </div>
+
+        ${
+          f.admin_reply 
+          ? `<div class="small" style="margin-top:12px;color:var(--ok)">
+               <strong>Admin Reply:</strong><br>${escape(f.admin_reply)}
+             </div>`
+          : ''
+        }
+      `;
+      fbList.appendChild(div);
+    });
+  }
+
+  function escape(s){ return s ? s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) : ''; }
+
+  // OPEN REPLY MODAL
+  window.replyFB = function(id){
+    current = feedbacks.find(f=>f.id===id);
+    if(!current) return;
+    modalTitle.textContent = "Reply to " + (current.patient_name || "Patient");
+    replyText.value = "";
+    modal.classList.add('show');
+  };
+
+  // SEND REPLY
+  sendBtn.onclick = async ()=>{
+    if(!replyText.value.trim()) return alert("Reply cannot be empty");
+
+    const res = await fetch('/api/feedback/'+current.id+'/reply',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({ reply: replyText.value })
+    });
+
+    const out = await res.json();
+    if(out.success){
+      alert("Reply sent");
+      modal.classList.remove('show');
+      loadFeedback();
+    } else alert(out.msg || "Failed");
+  };
+
+  // CLOSE TICKET
+  window.closeFB = async function(id){
+    if(!confirm("Close this ticket?")) return;
+
+    const res = await fetch('/api/feedback/'+id+'/close',{
+      method:'POST',
+      headers:{Authorization:'Bearer '+token}
+    });
+
+    const out = await res.json();
+    if(out.success){
+      loadFeedback();
+    } else alert(out.msg || "Failed");
+  };
+
+  // DELETE FEEDBACK
+  window.deleteFB = async function(id){
+    if(!confirm("Delete this feedback?")) return;
+
+    const res = await fetch('/api/feedback/'+id,{
+      method:'DELETE',
+      headers:{Authorization:'Bearer '+token}
+    });
+
+    const out = await res.json();
+    if(out.success){
+      loadFeedback();
+    } else alert(out.msg || "Failed");
+  };
+
+  closeModal.onclick = ()=> modal.classList.remove('show');
+
+  await loadFeedback();
+
+  document.getElementById('logoutBtn').onclick = ()=>{ localStorage.clear(); location.href='login.html'; };
+
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin Dashboard — Vaccination System</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#2563eb;
+  --accent2:#06b6d4;
+  --danger:#ef4444;
+  --ok:#10b981;
+  --muted:#6b7280;
+  --bg:#f0f5ff;
+  --card:#fff;
+  --radius:16px;
+  font-family:Inter,system-ui,Arial;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f5f7ff;color:#0f172a}
+
+header{
+  background:white;padding:14px 22px;border-bottom:1px solid #e5e9f5;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:10;
+}
+.logo{font-size:24px;font-weight:900;color:var(--accent)}
+nav a{
+  margin-left:10px;text-decoration:none;padding:8px 14px;
+  font-weight:600;color:var(--muted);border-radius:10px;
+}
+nav a:hover{background:#eaf1ff;color:var(--accent)}
+nav a.active{background:#eaf1ff;color:var(--accent);font-weight:700}
+
+.wrap{max-width:1100px;margin:30px auto;padding:15px}
+
+h1{font-size:26px;font-weight:900;margin-bottom:8px}
+.muted{color:var(--muted)}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:20px;margin-top:20px;
+}
+.card{
+  background:white;padding:20px;border-radius:var(--radius);
+  box-shadow:0 10px 28px rgba(20,20,60,0.06);
+  border:1px solid #e7ebff;
+}
+.card h2{
+  font-size:22px;font-weight:900;margin-bottom:6px;
+}
+.card .num{
+  font-size:34px;font-weight:900;color:var(--accent);
+}
+.small{font-size:14px;color:var(--muted)}
+
+.table-box{
+  margin-top:30px;background:white;padding:20px;border-radius:var(--radius);
+  box-shadow:0 10px 28px rgba(20,20,60,0.06);
+}
+table{
+  width:100%;border-collapse:collapse;margin-top:15px;
+}
+th,td{
+  padding:10px;border-bottom:1px solid #eef1ff;font-size:14px;
+}
+th{text-align:left;background:#f6f8ff;font-weight:700}
+.badge{
+  padding:4px 10px;border-radius:10px;font-size:12px;color:white;
+}
+.badge.low{background:var(--danger)}
+.badge.ok{background:var(--ok)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html" class="active">Dashboard</a>
+    <a href="admin-vaccines.html">Vaccines</a>
+    <a href="admin-centers.html">Centers</a>
+    <a href="admin-inventory.html">Inventory</a>
+    <a href="admin-appointments.html">Appointments</a>
+    <a href="admin-records.html">Records</a>
+    <a href="admin-feedback.html">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Welcome, Admin</h1>
+  <div class="muted">Manage the system, vaccines, appointments, inventory & more.</div>
+
+  <div class="grid" id="statsGrid">
+    <div class="card">
+      <h2>Vaccines</h2>
+      <div class="num" id="vCount">0</div>
+      <div class="small">Total vaccine types</div>
+    </div>
+
+    <div class="card">
+      <h2>Stock</h2>
+      <div class="num" id="stockCount">0</div>
+      <div class="small">Overall available stock</div>
+    </div>
+
+    <div class="card">
+      <h2>Patients</h2>
+      <div class="num" id="pCount">0</div>
+      <div class="small">Registered patients</div>
+    </div>
+
+    <div class="card">
+      <h2>Appointments</h2>
+      <div class="num" id="aCount">0</div>
+      <div class="small">Upcoming bookings</div>
+    </div>
+  </div>
+
+  <div class="table-box">
+    <h2>Low Stock Vaccines</h2>
+    <table id="stockTable">
+      <thead>
+        <tr>
+          <th>Vaccine</th>
+          <th>Quantity</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+(async function(){
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  if(!token){
+    alert("Login first");
+    location.href="login.html";
+    return;
+  }
+  if(user.role !== "admin"){
+    alert("Only admin allowed");
+    location.href="dashboard-patient.html";
+    return;
+  }
+
+  // Load stats
+  const vRes = await fetch('/api/vaccines',{headers:{Authorization:'Bearer '+token}});
+  const cRes = await fetch('/api/inventory',{headers:{Authorization:'Bearer '+token}});
+  const aRes = await fetch('/api/appointments',{headers:{Authorization:'Bearer '+token}});
+
+  const vaccines = await vRes.json();
+  const inventory = await cRes.json();
+  const appts = await aRes.json();
+
+  document.getElementById('vCount').innerText = vaccines.length;
+  document.getElementById('stockCount').innerText =
+    inventory.reduce((s,i)=> s + Number(i.quantity||0),0);
+  document.getElementById('aCount').innerText = appts.length;
+
+  // Count patients
+  const pRes = await fetch('/api/all-patients',{headers:{Authorization:'Bearer '+token}});
+  const patients = await pRes.json();
+  document.getElementById('pCount').innerText = patients.length;
+
+  // Low stock table
+  const tbody = document.querySelector('#stockTable tbody');
+  tbody.innerHTML = '';
+
+  inventory.forEach(i=>{
+    if(i.quantity<=5){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i.vaccine_name}</td>
+        <td>${i.quantity}</td>
+        <td><span class="badge low">Low</span></td>
+      `;
+      tbody.appendChild(tr);
+    }
+  });
+
+  if(tbody.innerHTML===""){
+    tbody.innerHTML = `<tr><td colspan="3">No low stock alerts.</td></tr>`;
+  }
+
+  // logout
+  document.getElementById('logoutBtn').onclick = ()=>{
+    localStorage.clear();
+    location.href="login.html";
+  };
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

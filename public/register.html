@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Register — Vaccination Management System</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#0b5cff;
+  --accent2:#0ea5a4;
+  --bg:#eef4ff;
+  --radius:16px;
+  --muted:#6b7280;
+  --card:#ffffffdd;
+  font-family:Inter,system-ui;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  min-height:100vh;
+  background:linear-gradient(135deg,#e7f0ff,#fafcff);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:20px;
+}
+
+.box{
+  width:100%;
+  max-width:460px;
+  background:var(--card);
+  padding:30px;
+  border-radius:var(--radius);
+  backdrop-filter:blur(18px);
+  box-shadow:0 24px 50px rgba(0,0,0,0.1);
+  animation:fade 0.6s ease;
+}
+@keyframes fade{
+  from{opacity:0; transform:translateY(20px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+.logo{
+  width:60px;height:60px;border-radius:16px;
+  background:linear-gradient(135deg,var(--accent),#29b8ff);
+  display:flex;align-items:center;justify-content:center;
+  color:white;font-weight:900;font-size:22px;
+  margin:0 auto;
+}
+
+h1{
+  text-align:center;
+  margin-top:14px;
+  font-size:26px;
+  font-weight:900;
+}
+
+p{
+  text-align:center;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:14px;
+}
+
+label{font-weight:700;font-size:14px;margin-top:14px;display:block}
+input{
+  width:100%;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid #dbe2f0;
+  margin-top:6px;
+  font-size:15px;
+}
+
+.btn{
+  width:100%;
+  background:var(--accent);
+  padding:12px;
+  color:white;
+  font-size:16px;
+  border-radius:12px;
+  border:none;
+  margin-top:24px;
+  cursor:pointer;
+  font-weight:700;
+}
+.btn:hover{background:#0045cf}
+
+.info{
+  margin-top:16px;
+  text-align:center;
+  font-size:14px;
+  color:var(--muted);
+}
+a{color:var(--accent);font-weight:700;text-decoration:none}
+
+#errorMsg{color:red;margin-top:10px;text-align:center;font-size:14px}
+#successMsg{color:green;margin-top:10px;text-align:center;font-size:14px}
+
+</style>
+</head>
+<body>
+
+<div class="box">
+
+  <div class="logo">VMS</div>
+
+  <h1>Create Account</h1>
+  <p>Register as a new patient</p>
+
+  <div style="margin-top:20px">
+
+    <label>Full Name</label>
+    <input id="name" type="text" placeholder="Enter full name">
+
+    <label>Email</label>
+    <input id="email" type="email" placeholder="Enter email">
+
+    <label>Password</label>
+    <input id="password" type="password" placeholder="Create password">
+
+    <label>Confirm Password</label>
+    <input id="cpassword" type="password" placeholder="Confirm password">
+
+    <div id="errorMsg"></div>
+    <div id="successMsg"></div>
+
+    <button class="btn" id="regBtn">Create Account</button>
+
+    <div class="info">
+      Already have an account? <a href="login.html">Login</a>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+(function(){
+
+  const regBtn = document.getElementById("regBtn");
+  const errorMsg = document.getElementById("errorMsg");
+  const successMsg = document.getElementById("successMsg");
+
+  regBtn.onclick = async ()=>{
+
+    errorMsg.innerText = "";
+    successMsg.innerText = "";
+
+    const name = document.getElementById("name").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const cpassword = document.getElementById("cpassword").value.trim();
+
+    if(!name || !email || !password || !cpassword){
+      errorMsg.innerText = "Please fill all fields.";
+      return;
+    }
+    if(password !== cpassword){
+      errorMsg.innerText = "Passwords do not match.";
+      return;
+    }
+    if(password.length < 6){
+      errorMsg.innerText = "Password must be at least 6 characters.";
+      return;
+    }
+
+    regBtn.disabled = true;
+    regBtn.innerText = "Submitting…";
+
+    try{
+      const res = await fetch("/api/register",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ name,email,password })
+      });
+
+      const out = await res.json();
+
+      if(out.success){
+        successMsg.innerText = "Account created successfully! Redirecting to login…";
+        setTimeout(()=> location.href="login.html", 1500);
+      } else {
+        errorMsg.innerText = out.msg || "Registration failed.";
+      }
+
+    }catch(e){
+      console.error(e);
+      errorMsg.innerText = "Server error.";
+    }
+
+    regBtn.disabled = false;
+    regBtn.innerText = "Create Account";
+  };
+
+})();
+</script>
+
+</body>
+</html>

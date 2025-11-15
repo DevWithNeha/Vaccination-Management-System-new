@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>My Profile – Patient</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+  :root{
+    --p:#2563eb;
+    --bg:#f4f8ff;
+    --card:white;
+    --muted:#6b7280;
+    --radius:18px;
+    font-family:Inter,system-ui,Arial;
+  }
+  body{margin:0;background:var(--bg)}
+  header{
+    background:white;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;
+    box-shadow:0 4px 14px rgba(0,0,0,0.08);position:sticky;top:0;z-index:10;
+  }
+  nav a{
+    margin-left:10px;text-decoration:none;font-weight:600;color:var(--muted);
+    padding:8px 14px;border-radius:10px;
+  }
+  nav a.active, nav a:hover{background:#e4edff;color:var(--p)}
+  .logout{background:#ef4444;color:white;padding:8px 12px;border-radius:10px;text-decoration:none}
+
+  .wrap{max-width:900px;margin:24px auto;padding:14px}
+  h1{margin:12px 0;font-size:26px;font-weight:800;}
+  .muted{color:var(--muted)}
+
+  .card{
+    background:var(--card);padding:22px;border-radius:var(--radius);
+    box-shadow:0 10px 24px rgba(0,0,0,0.07);margin-bottom:20px;
+  }
+
+  label{font-weight:700;margin-top:14px;display:block}
+  input,select,textarea{
+    width:100%;padding:10px;border:1px solid #d0d7e2;border-radius:10px;margin-top:6px;font-size:14px;
+  }
+
+  .btn{
+    margin-top:18px;padding:12px 18px;background:var(--p);color:white;border-radius:12px;border:none;
+    cursor:pointer;font-weight:700;
+  }
+
+  .flex{display:flex;gap:20px;flex-wrap:wrap}
+  .half{flex:1;min-width:260px}
+
+  .id-card{
+    background:#eef4ff;padding:12px;border-radius:12px;margin-top:10px;font-size:14px;
+  }
+  .view-btn{
+    display:inline-block;margin-top:8px;padding:6px 12px;background:var(--p);color:white;border-radius:10px;text-decoration:none;
+  }
+</style>
+</head>
+
+<body>
+
+<header>
+  <div style="font-size:22px;font-weight:800;color:var(--p)">My Profile</div>
+  <nav>
+    <a href="dashboard-patient.html">Dashboard</a>
+    <a class="active" href="patient-profile.html">My Profile</a>
+    <a href="patient-vaccines.html">Vaccines</a>
+    <a href="patient-appointment-book.html">Book Appointment</a>
+    <a href="patient-appointments.html">My Appointments</a>
+    <a href="patient-certificates.html">Certificates</a>
+    <a href="patient-notifications.html">Notifications</a>
+    <a href="patient-feedback.html">Feedback</a>
+    <a class="logout" id="logoutBtn">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <h1>My Profile</h1>
+  <div class="muted">Update your personal details & health information</div>
+
+  <!-- PROFILE FORM -->
+  <div class="card">
+
+    <div class="flex">
+      <div class="half">
+        <label>Full Name</label>
+        <input id="name">
+
+        <label>Age</label>
+        <input type="number" id="age">
+
+        <label>Gender</label>
+        <select id="gender">
+          <option>male</option>
+          <option>female</option>
+          <option>other</option>
+        </select>
+      </div>
+
+      <div class="half">
+        <label>Address</label>
+        <input id="address">
+
+        <label>Phone</label>
+        <input id="phone">
+
+        <label>Email (read-only)</label>
+        <input id="email" readonly style="background:#f0f0f0">
+      </div>
+    </div>
+
+    <label>Medical History</label>
+    <textarea id="history" rows="3" placeholder="e.g., Diabetes, BP, allergies"></textarea>
+
+    <label>Allergies</label>
+    <textarea id="allergies" rows="3" placeholder="e.g., Penicillin, Food allergies"></textarea>
+
+    <button class="btn" onclick="updateProfile()">Save Changes</button>
+
+    <div id="msg" style="margin-top:10px;font-weight:600"></div>
+  </div>
+
+  <!-- ID PROOF SECTION -->
+  <div class="card">
+    <h3 style="margin-top:0">ID Proof</h3>
+    <div id="idInfo" class="muted">Loading...</div>
+
+    <input type="file" id="idFile" accept=".jpg,.jpeg,.png,.pdf" style="margin-top:10px;">
+    <button class="btn" onclick="uploadIDProof()">Upload / Replace ID Proof</button>
+  </div>
+
+</div>
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem("authToken");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  if(!token){
+    alert("Please login first.");
+    location.href = "login.html";
+    return;
+  }
+
+  if(user.role !== "patient"){
+    alert("This page is only for patient users.");
+    location.href = "dashboard-admin.html";
+    return;
+  }
+
+  document.getElementById("logoutBtn").onclick = ()=>{
+    localStorage.clear(); location.href="login.html";
+  };
+
+  //---------------------------
+  // LOAD PROFILE DATA
+  //---------------------------
+  let res = await fetch("/api/patient/profile",{
+    headers:{ "Authorization":"Bearer "+token }
+  });
+  let data = await res.json();
+
+  // fill fields
+  name.value = data.name;
+  age.value = data.age || "";
+  gender.value = data.gender;
+  address.value = data.address || "";
+  phone.value = data.phone || "";
+  email.value = data.email;
+  history.value = data.history || "";
+  allergies.value = data.allergies || "";
+
+  // ID proof
+  if(data.id_proof){
+    idInfo.innerHTML = `
+      <div class="id-card">
+        Uploaded: ${data.id_proof.split("/").pop()}
+        <br>
+        <a class="view-btn" href="${data.id_proof}" target="_blank">View ID Proof</a>
+      </div>
+    `;
+  } else {
+    idInfo.innerHTML = "No ID Proof uploaded.";
+  }
+
+})();
+
+//---------------------------
+// UPDATE PROFILE
+//---------------------------
+async function updateProfile(){
+  msg.innerText = "Saving...";
+  msg.style.color = "black";
+
+  let body = {
+    name:name.value,
+    age:age.value,
+    gender:gender.value,
+    address:address.value,
+    phone:phone.value,
+    history:history.value,
+    allergies:allergies.value
+  };
+
+  let res = await fetch("/api/patient/profile/update",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":"Bearer "+token
+    },
+    body:JSON.stringify(body)
+  });
+
+  let out = await res.json();
+  if(out.success){
+    msg.innerText = "Profile updated successfully!";
+    msg.style.color = "green";
+  } else {
+    msg.innerText = out.msg;
+    msg.style.color = "red";
+  }
+}
+
+//---------------------------
+// UPLOAD ID PROOF
+//---------------------------
+async function uploadIDProof(){
+  let f = idFile.files[0];
+  if(!f){ alert("Select a file first"); return; }
+
+  let form = new FormData();
+  form.append("id_proof", f);
+
+  let res = await fetch("/api/patient/id-proof",{
+    method:"POST",
+    headers:{ "Authorization":"Bearer "+token },
+    body:form
+  });
+
+  let out = await res.json();
+  if(out.success){
+    alert("ID proof uploaded!");
+    location.reload();
+  } else {
+    alert(out.msg);
+  }
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Feedback — Patient</title>
+
+<style>
+:root{
+  --accent:#2563eb;
+  --bg:#f6f9ff;
+  --card:#fff;
+  --muted:#6b7280;
+  --radius:12px;
+  font-family:Inter,system-ui,Arial;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#0f172a}
+header{
+  background:white;padding:12px 18px;border-bottom:1px solid #e6eef8;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;
+}
+.logo{font-weight:800;color:var(--accent)}
+nav a{margin-left:10px;text-decoration:none;color:var(--muted);padding:8px 12px;border-radius:8px;font-weight:600}
+nav a.active{background:#eef4ff;color:var(--accent);font-weight:700}
+
+.wrap{max-width:1000px;margin:20px auto;padding:14px}
+h1{margin:0;font-size:22px;font-weight:800}
+.muted{color:var(--muted);margin-top:8px}
+
+.grid{display:grid;grid-template-columns:1fr 360px;gap:16px;margin-top:16px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+
+.card{background:var(--card);padding:16px;border-radius:var(--radius);
+      box-shadow:0 12px 28px rgba(10,30,80,0.04)}
+.label{font-weight:700;margin-top:10px;display:block}
+.input,textarea,select{width:100%;padding:10px;border-radius:10px;
+      border:1px solid #e6eef8;margin-top:8px;font-size:14px}
+.btn{padding:10px 12px;border-radius:10px;border:none;
+     cursor:pointer;font-weight:700}
+.btn.primary{background:var(--accent);color:white}
+.small{font-size:13px;color:var(--muted)}
+.feedback-item{border:1px solid #eef4ff;padding:10px;border-radius:10px;margin-bottom:10px}
+.rating{display:inline-block;background:#fde68a;padding:6px 8px;border-radius:8px;font-weight:800}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+.file-note{font-size:12px;color:#475569;margin-top:6px}
+.empty{padding:18px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Vaccination Portal</div>
+  <nav>
+    <a href="dashboard-patient.html">Dashboard</a>
+    <a href="patient-profile.html">Profile</a>
+    <a href="patient-appointments.html">My Appointments</a>
+    <a href="patient-certificates.html">Certificates</a>
+    <a href="patient-notifications.html">Notifications</a>
+    <a class="active" href="patient-feedback.html">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;
+      padding:8px 10px;border-radius:10px;text-decoration:none">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Feedback & Support</h1>
+  <div class="muted">Share feedback about centers, appointments, or report an issue. Admin will receive it.</div>
+
+  <div class="grid">
+
+    <!-- LEFT: Send Feedback -->
+    <div class="card">
+      <div style="font-weight:800">Send Feedback / Report Issue</div>
+
+      <label class="label">Type</label>
+      <select id="fbType" class="input">
+        <option value="feedback">Feedback</option>
+        <option value="complaint">Complaint</option>
+        <option value="issue">Report Issue</option>
+        <option value="suggestion">Suggestion</option>
+      </select>
+
+      <label class="label">Related Appointment (optional)</label>
+      <select id="apptSel" class="input">
+        <option value="">— Select appointment —</option>
+      </select>
+
+      <label class="label">Center (optional)</label>
+      <select id="centerSel" class="input">
+        <option value="">— Select center —</option>
+      </select>
+
+      <label class="label">Rating</label>
+      <select id="rating" class="input">
+        <option value="5">★★★★★ (5)</option>
+        <option value="4">★★★★ (4)</option>
+        <option value="3">★★★ (3)</option>
+        <option value="2">★★ (2)</option>
+        <option value="1">★ (1)</option>
+      </select>
+
+      <label class="label">Message</label>
+      <textarea id="message" class="input" rows="5"
+        placeholder="Write your feedback or issue..."></textarea>
+
+      <label class="label">Attach (optional)</label>
+      <input type="file" id="attach" accept=".jpg,.png,.jpeg,.pdf" class="input">
+      <div class="file-note">Attach an image / pdf (optional)</div>
+
+      <div style="margin-top:12px">
+        <button id="btnSend" class="btn primary">Send</button>
+        <span id="sendMsg" class="small" style="margin-left:10px"></span>
+      </div>
+    </div>
+
+    <!-- RIGHT: History -->
+    <aside class="card">
+      <div style="font-weight:800">Your Past Feedback</div>
+      <div id="pastList" style="margin-top:12px"></div>
+      <div id="emptyPast" class="empty" style="display:none">No feedback found.</div>
+    </aside>
+
+  </div>
+</div>
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem("authToken");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  if(!token){ alert("Please login"); location.href="login.html"; return; }
+  if(user.role !== "patient"){ alert("Access denied"); location.href="dashboard-admin.html"; return; }
+
+  document.getElementById("logoutBtn").onclick = ()=>{
+    localStorage.clear(); location.href="login.html";
+  };
+
+  const apptSel = document.getElementById("apptSel");
+  const centerSel = document.getElementById("centerSel");
+  const pastList = document.getElementById("pastList");
+  const emptyPast = document.getElementById("emptyPast");
+
+  // -----------------------------
+  // Load centers + appointments + my feedback
+  // -----------------------------
+  async function loadInit(){
+    const [cRes, aRes, fRes] = await Promise.all([
+      fetch('/api/centers', { headers:{ 'Authorization':'Bearer ' + token } }),
+      fetch('/api/appointments', { headers:{ 'Authorization':'Bearer ' + token } }),
+      fetch('/api/feedback/my', { headers:{ 'Authorization':'Bearer ' + token } })
+    ]);
+
+    const centers = await cRes.json();
+    const appts = await aRes.json();
+    const fb = await fRes.json();
+
+    centerSel.innerHTML = `<option value="">— Select center —</option>`;
+    centers.forEach(c=>{
+      centerSel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+    });
+
+    apptSel.innerHTML = `<option value="">— Select appointment —</option>`;
+    appts.forEach(a=>{
+      apptSel.innerHTML += `<option value="${a.id}">
+        ${a.vaccine_name} — ${new Date(a.appointment_date).toLocaleString()}
+      </option>`;
+    });
+
+    renderPast(fb);
+  }
+
+  function renderPast(list){
+    pastList.innerHTML = "";
+    if(!list.length){
+      emptyPast.style.display="block";
+      return;
+    }
+    emptyPast.style.display="none";
+
+    list.forEach(f=>{
+      pastList.innerHTML += `
+        <div class="feedback-item">
+          <div style="font-weight:800">${f.type}</div>
+          <div class="small">${new Date(f.created_at).toLocaleString()}</div>
+          <div class="small" style="margin-top:5px">Rating:
+            <span class="rating">${f.rating}</span>
+          </div>
+          <div style="margin-top:8px">${f.message}</div>
+          ${f.attachment_path ? `<a href="${f.attachment_path}" target="_blank" class="small">View attachment</a>` : ""}
+        </div>
+      `;
+    });
+  }
+
+  // -----------------------------
+  // SEND FEEDBACK
+  // -----------------------------
+  document.getElementById("btnSend").onclick = async ()=>{
+    const msg = document.getElementById("message").value.trim();
+    const form = new FormData();
+
+    form.append("type", document.getElementById("fbType").value);
+    form.append("appointment_id", apptSel.value);
+    form.append("center_id", centerSel.value);
+    form.append("rating", document.getElementById("rating").value);
+    form.append("message", msg);
+
+    if(document.getElementById("attach").files[0]){
+      form.append("attachment", document.getElementById("attach").files[0]);
+    }
+
+    const res = await fetch("/api/feedback", {
+      method:"POST",
+      headers:{ "Authorization":"Bearer "+token },
+      body:form
+    });
+
+    const out = await res.json();
+    const sendMsg = document.getElementById("sendMsg");
+
+    if(out.success){
+      sendMsg.style.color="green";
+      sendMsg.textContent="Feedback sent!";
+
+      // reload history
+      const fres = await fetch("/api/feedback/my", { headers:{ "Authorization":"Bearer "+token } });
+      const past = await fres.json();
+      renderPast(past);
+
+      document.getElementById("message").value="";
+      document.getElementById("attach").value="";
+    }else{
+      sendMsg.style.color="red";
+      sendMsg.textContent=out.msg || "Failed";
+    }
+  };
+
+  await loadInit();
+
+})();
+</script>
+
+</body>
+</html>

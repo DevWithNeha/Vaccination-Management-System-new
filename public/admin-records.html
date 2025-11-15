@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vaccination Records — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#2563eb;
+  --muted:#6b7280;
+  --danger:#ef4444;
+  --ok:#10b981;
+  --bg:#f6f9ff;
+  --card:#fff;
+  --radius:14px;
+  font-family:Inter,system-ui,Arial;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:#0f172a}
+
+header{
+  background:white;padding:14px 22px;border-bottom:1px solid #e6eef8;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.logo{font-weight:900;color:var(--accent)}
+nav a{
+  margin-left:10px;text-decoration:none;padding:8px 12px;border-radius:10px;
+  color:var(--muted);font-weight:600;
+}
+nav a.active{background:#eaf1ff;color:var(--accent);font-weight:700}
+
+.wrap{max-width:1200px;margin:30px auto;padding:14px}
+h1{font-size:26px;font-weight:900}
+.small{font-size:14px;color:var(--muted);margin-top:6px}
+
+.controls{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.input,select{
+  padding:10px;border:1px solid #e6eef8;border-radius:10px;font-size:14px;
+}
+.btn{
+  background:var(--accent);color:white;padding:10px 14px;
+  border-radius:10px;border:none;font-weight:800;cursor:pointer;
+}
+.btn.ghost{background:white;border:1px solid #e6eef8;color:var(--accent)}
+.btn.red{background:var(--danger)}
+
+.table{
+  width:100%;border-collapse:collapse;margin-top:18px;background:white;
+  border-radius:14px;overflow:hidden;box-shadow:0 12px 28px rgba(10,30,80,0.05)
+}
+.table th,.table td{
+  padding:12px;border-bottom:1px solid #eef4ff;font-size:14px;
+}
+.table th{background:#f8faff;font-weight:800;text-align:left}
+
+.badge{
+  background:var(--accent);padding:4px 10px;border-radius:8px;font-size:12px;
+  font-weight:700;color:white;
+}
+
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.empty{
+  margin-top:20px;padding:20px;text-align:center;background:white;
+  border-radius:12px;color:var(--muted)
+}
+
+.modal{
+  position:fixed;inset:0;background:rgba(0,0,0,0.45);
+  display:none;align-items:center;justify-content:center;
+}
+.modal.show{display:flex}
+.modal-box{
+  background:white;padding:20px;border-radius:14px;width:450px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.2)
+}
+.label{margin-top:12px;font-weight:700}
+.input2{
+  border:1px solid #e6eef8;padding:10px;border-radius:10px;width:100%;
+  margin-top:8px
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html">Dashboard</a>
+    <a href="admin-vaccines.html">Vaccines</a>
+    <a href="admin-centers.html">Centers</a>
+    <a href="admin-inventory.html">Inventory</a>
+    <a href="admin-appointments.html">Appointments</a>
+    <a href="admin-records.html" class="active">Records</a>
+    <a href="admin-feedback.html">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;padding:8px 10px;border-radius:10px">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Vaccination Records</h1>
+  <div class="small">All completed vaccinations with dose count & certificate controls.</div>
+
+  <div class="controls">
+    <input id="search" class="input" placeholder="Search patient, vaccine...">
+
+    <select id="filterVaccine" class="input">
+      <option value="">All Vaccines</option>
+    </select>
+
+    <select id="filterDose" class="input">
+      <option value="">All Doses</option>
+      <option value="1">Dose 1</option>
+      <option value="2">Dose 2</option>
+      <option value="3">Booster</option>
+    </select>
+
+    <select id="filterCenter" class="input">
+      <option value="">All Centers</option>
+    </select>
+
+    <button class="btn ghost" id="refreshBtn">Refresh</button>
+  </div>
+
+  <table class="table" id="recTable">
+    <thead>
+      <tr>
+        <th>Patient</th>
+        <th>Vaccine</th>
+        <th>Dose</th>
+        <th>Date</th>
+        <th>Center</th>
+        <th>Given By</th>
+        <th>Certificate</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="recBody"></tbody>
+  </table>
+
+  <div id="empty" class="empty" style="display:none">No vaccination records found.</div>
+</div>
+
+<!-- MODAL (edit dose or date) -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong id="mTitle">Edit Record</strong>
+      <button id="mClose" style="background:#ef4444;color:white;border:none;padding:8px 10px;border-radius:8px;cursor:pointer">Close</button>
+    </div>
+
+    <label class="label">Dose No</label>
+    <input id="mDose" type="number" class="input2">
+
+    <label class="label">Given Date</label>
+    <input id="mDate" type="datetime-local" class="input2">
+
+    <button class="btn" id="mSave" style="margin-top:14px">Save</button>
+  </div>
+</div>
+
+<script>
+(async function(){
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  if(!token){ location.href='login.html'; return; }
+  if(user.role !== 'admin'){ location.href='dashboard-patient.html'; return; }
+
+  const recBody = document.getElementById('recBody');
+  const empty = document.getElementById('empty');
+  const search = document.getElementById('search');
+  const filterVaccine = document.getElementById('filterVaccine');
+  const filterDose = document.getElementById('filterDose');
+  const filterCenter = document.getElementById('filterCenter');
+  const refreshBtn = document.getElementById('refreshBtn');
+
+  const modal = document.getElementById('modal');
+  const mTitle = document.getElementById('mTitle');
+  const mClose = document.getElementById('mClose');
+  const mDose = document.getElementById('mDose');
+  const mDate = document.getElementById('mDate');
+  const mSave = document.getElementById('mSave');
+
+  let records = [], vaccines = [], centers = [];
+  let current = null;
+
+  async function loadAll(){
+    recBody.innerHTML = "<tr><td colspan='8'>Loading...</td></tr>";
+
+    const [vRes, cRes, rRes] = await Promise.all([
+      fetch('/api/vaccines',{headers:{Authorization:'Bearer '+token}}),
+      fetch('/api/centers',{headers:{Authorization:'Bearer '+token}}),
+      fetch('/api/vaccination-records',{headers:{Authorization:'Bearer '+token}})
+    ]);
+
+    vaccines = await vRes.json();
+    centers = await cRes.json();
+    records = await rRes.json();
+
+    populateFilters();
+    renderTable();
+  }
+
+  function populateFilters(){
+    // vaccine filter
+    filterVaccine.innerHTML = '<option value="">All Vaccines</option>';
+    vaccines.forEach(v=>{
+      const o = document.createElement('option'); o.value=v.id; o.textContent=v.name;
+      filterVaccine.appendChild(o);
+    });
+
+    // center
+    filterCenter.innerHTML = '<option value="">All Centers</option>';
+    centers.forEach(c=>{
+      const o = document.createElement('option'); o.value=c.id; o.textContent=c.name;
+      filterCenter.appendChild(o);
+    });
+  }
+
+  function renderTable(){
+    recBody.innerHTML = '';
+
+    const q = search.value.trim().toLowerCase();
+    const fVac = filterVaccine.value;
+    const fDose = filterDose.value;
+    const fCent = filterCenter.value;
+
+    const rows = records.filter(r=>{
+      if(fVac && String(r.vaccine_id)!==String(fVac)) return false;
+      if(fDose && String(r.dose_no)!==String(fDose)) return false;
+      if(fCent && String(r.center_id)!==String(fCent)) return false;
+      if(q){
+        return (r.patient_name||'').toLowerCase().includes(q) ||
+               (r.vaccine_name||'').toLowerCase().includes(q);
+      }
+      return true;
+    });
+
+    if(rows.length===0){
+      empty.style.display='block';
+      return;
+    } else empty.style.display='none';
+
+    rows.forEach(r=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escape(r.patient_name||'Patient')}</td>
+        <td>${escape(r.vaccine_name||'')}</td>
+        <td>${r.dose_no}</td>
+        <td>${new Date(r.given_on).toLocaleString()}</td>
+        <td>${escape(r.center_name||'-')}</td>
+        <td>${escape(r.staff_name||'-')}</td>
+        <td><button class="btn ghost" onclick="downloadCert(${r.id})">Download</button></td>
+        <td>
+          <div class="actions">
+            <button class="btn ghost" onclick="editRecord(${r.id})">Edit</button>
+            <button class="btn red" onclick="deleteRecord(${r.id})">Delete</button>
+          </div>
+        </td>
+      `;
+      recBody.appendChild(tr);
+    });
+  }
+
+  function escape(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  // VIEW / EDIT RECORD
+  window.editRecord = async function(id){
+    current = records.find(r=>r.id===id);
+    if(!current) return alert('Not found');
+
+    mTitle.textContent = 'Edit Vaccination Record';
+    mDose.value = current.dose_no;
+    mDate.value = current.given_on ? current.given_on.slice(0,16) : '';
+
+    modal.classList.add('show');
+  };
+
+  mSave.addEventListener('click', async ()=>{
+    if(!current) return;
+
+    const payload = {
+      dose_no: mDose.value,
+      given_on: mDate.value.replace('T',' ')
+    };
+
+    const res = await fetch('/api/vaccination-records/'+current.id,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify(payload)
+    });
+
+    const out = await res.json();
+    if(out.success){
+      alert('Updated');
+      modal.classList.remove('show');
+      loadAll();
+    } else alert(out.msg||'Failed');
+  });
+
+  mClose.addEventListener('click', ()=> modal.classList.remove('show'));
+
+  // DELETE RECORD
+  window.deleteRecord = async function(id){
+    if(!confirm('Delete this vaccination record?')) return;
+
+    const res = await fetch('/api/vaccination-records/'+id,{
+      method:'DELETE',
+      headers:{Authorization:'Bearer '+token}
+    });
+
+    const out = await res.json();
+    if(out.success){ alert('Deleted'); loadAll(); }
+    else alert(out.msg||'Failed');
+  };
+
+  // CERTIFICATE DOWNLOAD
+  window.downloadCert = function(id){
+    window.location.href = '/api/vaccination-records/'+id+'/certificate?token='+token;
+  };
+
+  refreshBtn.addEventListener('click', loadAll);
+  search.addEventListener('input', renderTable);
+  filterVaccine.addEventListener('change', renderTable);
+  filterDose.addEventListener('change', renderTable);
+  filterCenter.addEventListener('change', renderTable);
+
+  await loadAll();
+
+  // logout
+  document.getElementById('logoutBtn').onclick = ()=>{ localStorage.clear(); location.href='login.html'; };
+
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

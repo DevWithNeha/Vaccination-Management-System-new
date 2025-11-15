@@ -1,0 +1,449 @@
+<!-- <!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Notifications — Patient</title>
+<style>
+:root{
+  --accent:#2563eb;
+  --bg:#f6f9ff;
+  --card:#fff;
+  --muted:#6b7280;
+  --ok:#10b981;
+  --danger:#ef4444;
+  --radius:12px;
+  font-family:Inter, system-ui, Arial, sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#0f172a}
+header{
+  background:white;padding:12px 18px;border-bottom:1px solid #e6eef8;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;
+}
+.logo{font-weight:800;color:var(--accent)}
+nav a{margin-left:10px;text-decoration:none;color:var(--muted);padding:8px 12px;border-radius:8px;font-weight:600}
+nav a.active{background:#eef4ff;color:var(--accent);font-weight:700}
+.badge{background:#ef4444;color:white;padding:4px 8px;border-radius:20px;font-weight:700;margin-left:6px;font-size:13px}
+.wrap{max-width:1000px;margin:18px auto;padding:14px}
+h1{margin:0;font-size:22px;font-weight:800}
+.muted{color:var(--muted);margin-top:6px}
+
+.card{background:var(--card);padding:14px;border-radius:var(--radius);box-shadow:0 10px 22px rgba(10,30,80,0.06);margin-top:14px}
+.controls{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.btn{padding:8px 12px;border-radius:10px;border:none;cursor:pointer;font-weight:700}
+.btn.primary{background:var(--accent);color:white}
+.btn.ghost{background:#f8fafc;border:1px solid #e6eef8;color:#0b2455}
+.list{display:flex;flex-direction:column;gap:10px}
+.notif{padding:12px;border-radius:10px;border:1px solid #eef4ff;display:flex;gap:12px;align-items:flex-start}
+.notif.unread{background:linear-gradient(180deg,#fff8e6,#fff);border-color:#ffe9a8}
+.notif .left{flex:1}
+.notif .title{font-weight:800}
+.notif .time{font-size:13px;color:var(--muted);margin-top:6px}
+.actions{display:flex;gap:8px;align-items:center;margin-left:8px}
+.small{font-size:13px;color:var(--muted)}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Vaccination Portal</div>
+  <nav>
+    <a href="dashboard-patient.html">Dashboard</a>
+    <a href="patient-profile.html">Profile</a>
+    <a href="patient-certificates.html">Certificates</a>
+    <a class="active" href="patient-notifications.html">Notifications <span id="notifBadge" class="badge" style="display:none">0</span></a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;padding:8px 10px;border-radius:10px;text-decoration:none">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Notifications</h1>
+  <div class="muted">Yahan aapke appointment reminders, dose reminders, stock alerts aur certificate updates aayenge.</div>
+
+  <div class="card">
+    <div class="controls">
+      <button id="btnMarkAll" class="btn primary">Mark All Read</button>
+      <button id="btnRefresh" class="btn ghost">Refresh</button>
+      <div style="margin-left:auto" class="small" id="lastChecked">Last checked: --</div>
+    </div>
+
+    <div id="list" class="list"></div>
+    <div id="empty" class="empty" style="display:none">No notifications.</div>
+  </div>
+</div>
+
+<script>
+(async function(){
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  if(!token){ alert('Please login'); location.href='login.html'; return; }
+  if(user.role !== 'patient'){ alert('Access denied'); location.href='dashboard-admin.html'; return; }
+
+  const listEl = document.getElementById('list');
+  const emptyEl = document.getElementById('empty');
+  const badgeEl = document.getElementById('notifBadge');
+  const lastCheckedEl = document.getElementById('lastChecked');
+  const btnRefresh = document.getElementById('btnRefresh');
+  const btnMarkAll = document.getElementById('btnMarkAll');
+
+  let notifications = [];
+
+  async function load(){
+    listEl.innerHTML = 'Loading...';
+    try{
+      const res = await fetch('/api/notifications', { headers: { 'Authorization': 'Bearer ' + token } });
+      const data = await res.json();
+      notifications = Array.isArray(data) ? data : [];
+      render();
+      updateBadge();
+      lastCheckedEl.innerText = 'Last checked: ' + new Date().toLocaleTimeString();
+    }catch(e){
+      console.error('load err', e);
+      listEl.innerHTML = '<div class="empty">Error loading notifications. Try refresh.</div>';
+    }
+  }
+
+  function render(){
+    listEl.innerHTML = '';
+    if(!notifications.length){
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    notifications.sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+    notifications.forEach(n=>{
+      const item = document.createElement('div');
+      item.className = 'notif' + (n.is_read ? '' : ' unread');
+
+      const left = document.createElement('div');
+      left.className = 'left';
+      left.innerHTML = `<div class="title">${escape(n.title || 'Notification')}</div>
+                        <div class="small">${escape(n.message || '')}</div>
+                        <div class="time">${new Date(n.created_at).toLocaleString()}</div>`;
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'btn ghost';
+      viewBtn.innerText = 'View';
+      viewBtn.onclick = ()=> viewNotification(n);
+
+      const markBtn = document.createElement('button');
+      markBtn.className = 'btn primary';
+      markBtn.innerText = n.is_read ? 'Read' : 'Mark Read';
+      markBtn.disabled = n.is_read;
+      markBtn.onclick = ()=> markRead(n.id, item, markBtn);
+
+      actions.appendChild(viewBtn);
+      actions.appendChild(markBtn);
+
+      item.appendChild(left);
+      item.appendChild(actions);
+      listEl.appendChild(item);
+    });
+  }
+
+  function updateBadge(){
+    const unread = notifications.filter(n=>!n.is_read).length;
+    if(unread > 0){
+      badgeEl.style.display = 'inline-block';
+      badgeEl.innerText = unread;
+    } else badgeEl.style.display = 'none';
+  }
+
+  async function markRead(id, domItem, btn){
+    try{
+      btn.disabled = true;
+      const res = await fetch(`/api/notifications/${id}/read`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const out = await res.json();
+      if(out.success){
+        // update local
+        const idx = notifications.findIndex(x=>x.id === id);
+        if(idx >= 0) notifications[idx].is_read = 1;
+        domItem.classList.remove('unread');
+        btn.innerText = 'Read';
+        updateBadge();
+      } else {
+        alert(out.msg || 'Could not mark read');
+        btn.disabled = false;
+      }
+    }catch(e){
+      alert('Network error');
+      btn.disabled = false;
+    }
+  }
+
+  async function viewNotification(n){
+    // default behavior: if meta contains appointment id / certificate path, open relevant page
+    if(n.type === 'appointment' && n.meta){
+      try {
+        const meta = typeof n.meta === 'string' ? JSON.parse(n.meta) : n.meta;
+        if(meta.appointment_id) { location.href = 'patient-appointments.html'; return; }
+      } catch(e){}
+    }
+    if(n.type === 'certificate' && n.meta){
+      try {
+        const meta = typeof n.meta === 'string' ? JSON.parse(n.meta) : n.meta;
+        if(meta.certificate_path) { window.open(meta.certificate_path, '_blank'); return; }
+      } catch(e){}
+    }
+    // otherwise just show alert
+    alert((n.title ? n.title + '\n\n' : '') + (n.message || ''));
+    // mark read after viewing
+    if(!n.is_read) markRead(n.id, null, { disabled:false, innerText:'' }); // we won't update DOM here, simpler: reload
+    await load();
+  }
+
+  // Mark all read
+  btnMarkAll.addEventListener('click', async ()=>{
+    if(!confirm('Mark all notifications as read?')) return;
+    try{
+      const res = await fetch('/api/notifications/mark-all-read', {
+        method:'POST',
+        headers:{ 'Authorization': 'Bearer ' + token }
+      });
+      const out = await res.json();
+      if(out.success){
+        // update locally
+        notifications.forEach(n=> n.is_read = 1);
+        render();
+        updateBadge();
+      } else alert(out.msg || 'Failed');
+    }catch(e){
+      alert('Network error');
+    }
+  });
+
+  btnRefresh.addEventListener('click', load);
+
+  // Poll for new notifications every 30 seconds
+  let pollInterval = setInterval(load, 30000);
+
+  // initial load
+  await load();
+
+  // cleanup on unload
+  window.addEventListener('beforeunload', ()=> clearInterval(pollInterval));
+
+  // logout
+  document.getElementById('logoutBtn').addEventListener('click', ()=> { localStorage.clear(); location.href='login.html'; });
+
+  // helper
+  function escape(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+})();
+</script>
+
+</body>
+</html>
+ -->
+
+ <!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Notifications — Patient</title>
+
+<style>
+:root{
+  --accent:#2563eb;
+  --bg:#f6f9ff;
+  --card:#fff;
+  --muted:#6b7280;
+  --radius:14px;
+  font-family:Inter,system-ui;
+}
+
+body{margin:0;background:var(--bg);color:#0f172a}
+header{
+  background:white;padding:12px 18px;border-bottom:1px solid #e6eef8;
+  display:flex;justify-content:space-between;align-items:center;
+  position:sticky;top:0;z-index:20;
+}
+.logo{font-size:20px;font-weight:800;color:var(--accent)}
+nav a{
+  margin-left:10px;
+  text-decoration:none;
+  color:var(--muted);
+  padding:8px 12px;
+  border-radius:10px;
+  font-weight:600;
+}
+nav a.active{background:#eef4ff;color:var(--accent)}
+
+.bell{
+  position:relative;
+  font-size:20px;
+  cursor:pointer;
+}
+.badge{
+  position:absolute;top:-6px;right:-6px;
+  background:red;color:white;
+  padding:2px 7px;
+  border-radius:50%;
+  font-size:12px;
+  font-weight:700;
+}
+
+.wrap{max-width:900px;margin:20px auto;padding:14px}
+h1{margin:0;font-size:24px;font-weight:900}
+.card{
+  background:white;
+  margin-top:16px;
+  padding:16px;
+  border-radius:var(--radius);
+  box-shadow:0 10px 26px rgba(10,30,80,0.05);
+}
+.title{font-weight:900;font-size:16px}
+.time{font-size:12px;color:var(--muted);margin-top:4px}
+.msg{margin-top:8px;font-size:14px}
+.unread{
+  border-left:5px solid var(--accent);
+  background:#eef4ff;
+}
+.empty{
+  text-align:center;
+  color:var(--muted);
+  padding:30px;
+  margin-top:20px;
+}
+.logout{
+  background:#ef4444;color:white;padding:8px 12px;
+  border-radius:10px;text-decoration:none;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">Vaccination Portal</div>
+
+  <nav>
+    <a href="dashboard-patient.html">Dashboard</a>
+    <a href="patient-profile.html">Profile</a>
+    <a href="patient-appointments.html">My Appointments</a>
+    <a class="active" href="patient-notifications.html">Notifications</a>
+
+    <span class="bell" id="notifyBell">
+      🔔 <span id="badge" class="badge" style="display:none">0</span>
+    </span>
+
+    <a id="logoutBtn" class="logout">Logout</a>
+  </nav>
+</header>
+
+Notifications <span id="notifBadge" style="
+background:red;color:white;padding:2px 6px;border-radius:50%;font-size:12px;
+"></span>
+
+
+<div class="wrap">
+  <h1>Notifications</h1>
+
+  <div id="list"></div>
+  <div id="empty" class="empty" style="display:none">No notifications yet.</div>
+</div>
+
+<script>
+(async function(){
+    const token = localStorage.getItem("authToken");
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+    if(!token){ location.href="login.html"; return; }
+    if(user.role !== "patient"){ location.href="dashboard-admin.html"; return; }
+
+    document.getElementById("logoutBtn").onclick = ()=>{
+      localStorage.clear(); location.href="login.html";
+    };
+
+    const listBox = document.getElementById("list");
+    const empty = document.getElementById("empty");
+    const badge = document.getElementById("badge");
+
+    // --------- Load unread count ---------
+    async function loadUnread(){
+        const r = await fetch("/api/notifications/unread-count", {
+          headers:{ Authorization:"Bearer "+token }
+        });
+        const out = await r.json();
+
+        if(out.count > 0){
+          badge.style.display = "inline-block";
+          badge.innerText = out.count;
+        } else {
+          badge.style.display = "none";
+        }
+    }
+
+    // --------- Load notifications ---------
+    async function loadList(){
+        const res = await fetch("/api/notifications", {
+            headers:{ Authorization:"Bearer "+token }
+        });
+        const rows = await res.json();
+
+        listBox.innerHTML = "";
+
+        if(rows.length === 0){
+            empty.style.display = "block";
+            return;
+        }
+        empty.style.display = "none";
+
+        rows.forEach(n=>{
+            const div = document.createElement("div");
+            div.className = "card " + (n.is_read ? "" : "unread");
+            div.innerHTML = `
+                <div class="title">${n.title || "Notification"}</div>
+                <div class="time">${new Date(n.created_at).toLocaleString()}</div>
+                <div class="msg">${n.message}</div>
+            `;
+            div.onclick = ()=> markRead(n.id, div);
+            listBox.appendChild(div);
+        });
+    }
+
+    async function loadBadge(){
+   const token = localStorage.getItem("authToken");
+   const res = await fetch("/api/notifications/unread-count", {
+     headers: { "Authorization": "Bearer " + token }
+   });
+   const out = await res.json();
+   const badge = document.getElementById("notifBadge");
+   badge.innerText = out.count > 0 ? out.count : "";
+}
+
+loadBadge();
+setInterval(loadBadge, 5000);
+
+
+    // --------- Mark as read ---------
+    async function markRead(id, box){
+        box.classList.remove("unread");
+
+        await fetch(`/api/notifications/${id}/read`,{
+            method:"POST",
+            headers:{ Authorization:"Bearer "+token }
+        });
+
+        loadUnread();
+    }
+
+    // Initial load
+    await loadUnread();
+    await loadList();
+
+})();
+</script>
+
+</body>
+</html>

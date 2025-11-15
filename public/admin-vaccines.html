@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Manage Vaccines — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+:root{
+  --accent:#2563eb;
+  --accent2:#06b6d4;
+  --danger:#ef4444;
+  --muted:#6b7280;
+  --bg:#f1f4ff;
+  --card:#fff;
+  --radius:16px;
+  font-family:Inter,system-ui,Arial;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f5f7ff;color:#0f172a}
+
+header{
+  background:white;padding:14px 22px;border-bottom:1px solid #e5e9f5;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.logo{font-size:24px;font-weight:900;color:var(--accent)}
+nav a{
+  margin-left:10px;text-decoration:none;padding:8px 14px;
+  font-weight:600;color:var(--muted);border-radius:10px;
+}
+nav a:hover{background:#eaf1ff;color:var(--accent)}
+nav a.active{background:#eaf1ff;color:var(--accent);font-weight:700}
+
+.wrap{max-width:1050px;margin:30px auto;padding:15px}
+h1{font-size:26px;font-weight:900;margin-bottom:10px}
+.btn{
+  background:var(--accent);color:white;border:none;border-radius:10px;
+  padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;
+}
+.btn.red{background:var(--danger)}
+.btn.ghost{
+  background:#f8faff;border:1px solid #dce5ff;color:var(--accent)
+}
+
+.card{
+  background:white;padding:20px;border-radius:var(--radius);
+  box-shadow:0 10px 22px rgba(20,20,60,0.05);margin-top:16px;
+}
+
+table{
+  width:100%;border-collapse:collapse;margin-top:20px;
+}
+th,td{
+  padding:10px;border-bottom:1px solid #ecf0ff;font-size:14px;
+}
+th{
+  text-align:left;background:#f7f9ff;font-weight:700;
+}
+
+input,select,textarea{
+  width:100%;padding:10px;border-radius:10px;
+  border:1px solid #dfe4f5;font-size:14px;
+}
+
+.form-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;
+}
+textarea{resize:none;height:70px}
+
+.modal{
+  position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);
+  display:flex;align-items:center;justify-content:center;visibility:hidden;
+  opacity:0;transition:.2s;
+}
+.modal.active{visibility:visible;opacity:1}
+
+.modal-box{
+  background:white;width:420px;padding:20px;border-radius:16px;
+  box-shadow:0 10px 25px rgba(0,0,0,0.15);
+}
+.modal-box h2{font-size:20px;font-weight:900;margin-bottom:10px}
+.close{
+  float:right;color:var(--danger);cursor:pointer;font-weight:900;font-size:20px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Admin Panel</div>
+  <nav>
+    <a href="admin-dashboard.html">Dashboard</a>
+    <a href="admin-vaccines.html" class="active">Vaccines</a>
+    <a href="admin-centers.html">Centers</a>
+    <a href="admin-inventory.html">Inventory</a>
+    <a href="admin-appointments.html">Appointments</a>
+    <a href="admin-records.html">Records</a>
+    <a href="admin-feedback.html">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <h1>Manage Vaccines</h1>
+  <button class="btn" id="btnAdd">+ Add Vaccine</button>
+
+  <div class="card">
+    <table id="vaccTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Dose Type</th>
+          <th>Required Age</th>
+          <th>Description</th>
+          <th>Side Effects</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+
+<!-- ============================
+       ADD / EDIT MODAL
+=============================== -->
+<div class="modal" id="vaccineModal">
+  <div class="modal-box">
+    <span class="close" id="closeModal">&times;</span>
+    <h2 id="modalTitle">Add Vaccine</h2>
+
+    <div class="form-grid">
+      <div>
+        <label>Name</label>
+        <input id="vName" type="text">
+      </div>
+      <div>
+        <label>Dose Type</label>
+        <select id="vDose">
+          <option value="General">General</option>
+          <option value="1st Dose">1st Dose</option>
+          <option value="2nd Dose">2nd Dose</option>
+          <option value="Booster">Booster</option>
+        </select>
+      </div>
+      <div>
+        <label>Required Age</label>
+        <input id="vAge" type="number" min="0" placeholder="Min age">
+      </div>
+      <div>
+        <label>Manufacturer</label>
+        <input id="vManu" type="text">
+      </div>
+    </div>
+
+    <label style="margin-top:10px;display:block">Description</label>
+    <textarea id="vDesc"></textarea>
+
+    <label style="margin-top:10px;display:block">Side Effects</label>
+    <textarea id="vSide"></textarea>
+
+    <button class="btn" style="margin-top:15px" id="btnSave">Save</button>
+  </div>
+</div>
+
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  if(!token){
+    alert("Login first");
+    location.href="login.html";
+    return;
+  }
+  if(user.role !== "admin"){
+    alert("Only admin allowed");
+    location.href="dashboard-patient.html";
+    return;
+  }
+
+  const modal = document.getElementById('vaccineModal');
+  const btnAdd = document.getElementById('btnAdd');
+  const closeModal = document.getElementById('closeModal');
+  const btnSave = document.getElementById('btnSave');
+  const modalTitle = document.getElementById('modalTitle');
+
+  const vName = document.getElementById('vName');
+  const vDose = document.getElementById('vDose');
+  const vAge = document.getElementById('vAge');
+  const vManu = document.getElementById('vManu');
+  const vDesc = document.getElementById('vDesc');
+  const vSide = document.getElementById('vSide');
+
+  const tbody = document.querySelector('#vaccTable tbody');
+
+  let editId = null;
+
+  // Open modal
+  btnAdd.onclick = ()=>{
+    modalTitle.textContent = "Add Vaccine";
+    editId = null;
+    vName.value = "";
+    vDose.value = "General";
+    vAge.value = "";
+    vManu.value = "";
+    vDesc.value = "";
+    vSide.value = "";
+    modal.classList.add('active');
+  };
+
+  closeModal.onclick = ()=> modal.classList.remove('active');
+
+  // Load Vaccine list
+  async function loadVaccines(){
+    tbody.innerHTML = "<tr><td colspan='6'>Loading...</td></tr>";
+    const res = await fetch('/api/vaccines', {
+      headers: { Authorization: "Bearer "+token }
+    });
+
+    const data = await res.json();
+    tbody.innerHTML = "";
+
+    data.forEach(v=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${v.name}</td>
+        <td>${v.dose_type || '-'}</td>
+        <td>${v.required_age || '-'}</td>
+        <td>${v.description || '-'}</td>
+        <td>${v.side_effects || '-'}</td>
+        <td>
+          <button class="btn ghost" onclick="editVacc(${v.id})">Edit</button>
+          <button class="btn red" onclick="delVacc(${v.id})">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  loadVaccines();
+
+  // EXPOSE functions globally
+  window.editVacc = async (id)=>{
+    editId = id;
+    modalTitle.textContent = "Edit Vaccine";
+
+    const res = await fetch('/api/vaccines/'+id, {
+      headers:{Authorization:"Bearer "+token}
+    });
+    const v = await res.json();
+
+    vName.value = v.name;
+    vDose.value = v.dose_type || "General";
+    vAge.value = v.required_age;
+    vManu.value = v.manufacturer;
+    vDesc.value = v.description;
+    vSide.value = v.side_effects;
+
+    modal.classList.add('active');
+  };
+
+  window.delVacc = async (id)=>{
+    if(!confirm("Delete this vaccine?")) return;
+
+    const res = await fetch('/api/vaccines/'+id, {
+      method:'DELETE',
+      headers:{Authorization:"Bearer "+token}
+    });
+    const out = await res.json();
+
+    if(out.success){
+      alert("Deleted");
+      loadVaccines();
+    } else {
+      alert(out.msg || "Delete failed");
+    }
+  };
+
+  // Save ADD / EDIT
+  btnSave.onclick = async ()=>{
+    const payload = {
+      name: vName.value,
+      dose_type: vDose.value,
+      required_age: vAge.value,
+      manufacturer: vManu.value,
+      description: vDesc.value,
+      side_effects: vSide.value
+    };
+
+    let url = '/api/vaccines';
+    let method = "POST";
+
+    // editing
+    if(editId){
+      url = '/api/vaccines/'+editId;
+      method = "PUT";
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers:{
+        "Content-Type":"application/json",
+        Authorization:"Bearer "+token
+      },
+      body:JSON.stringify(payload)
+    });
+
+    const out = await res.json();
+    if(out.success){
+      await fetch("/api/admin/notify", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + token
+  },
+  body: JSON.stringify({
+    audience: "patients",
+    title: "New Vaccine Added",
+    message: `Admin added new vaccine: ${vName.value}`
+  })
+});
+
+      alert("Saved & Notification sent!");
+      modal.classList.remove('active');
+      loadVaccines();
+    } else {
+      alert(out.msg || "Error saving");
+    }
+  };
+
+  // logout
+  document.getElementById('logoutBtn').onclick = ()=>{
+    localStorage.clear();
+    location.href="login.html";
+  };
+
+})();
+</script>
+
+<script>
+(function(){
+  const logout = document.getElementById("logoutBtn");
+  if(logout){
+    logout.onclick = () => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      window.location.href = "login.html?role=admin";
+    };
+  }
+})();
+</script>
+
+
+</body>
+</html>

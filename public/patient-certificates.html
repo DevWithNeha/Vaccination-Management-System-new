@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Certificates — Patient</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{
+  --accent:#2563eb;
+  --bg:#f6f9ff;
+  --card:#fff;
+  --muted:#6b7280;
+  --ok:#10b981;
+  --danger:#ef4444;
+  --radius:14px;
+  font-family:Inter,system-ui,Arial;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#0f172a}
+header{
+  background:white;padding:12px 18px;border-bottom:1px solid #e6eef8;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:10;
+}
+.logo{font-weight:800;color:var(--accent)}
+nav a{
+  margin-left:10px;text-decoration:none;color:var(--muted);
+  padding:8px 12px;border-radius:10px;font-weight:600;
+}
+nav a.active,nav a:hover{
+  background:#eef4ff;color:var(--accent);
+}
+.wrap{max-width:1100px;margin:24px auto;padding:14px}
+h1{margin:0;font-size:24px;font-weight:800}
+.muted{color:var(--muted);margin-top:6px}
+
+.grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:18px;margin-top:18px;
+}
+
+.card{
+  background:var(--card);padding:16px;border-radius:var(--radius);
+  box-shadow:0 12px 28px rgba(10,30,80,0.06);
+}
+
+.vcard{display:flex;gap:12px;align-items:center}
+.vimg{
+  width:70px;height:70px;border-radius:12px;
+  background:linear-gradient(135deg,var(--accent),#2bb6ff);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:20px;color:white;
+}
+
+.small{font-size:13px;color:var(--muted)}
+
+.qr{width:120px;height:120px;border-radius:8px;border:1px solid #dce3ff}
+.actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+.btn{
+  padding:8px 12px;border-radius:10px;border:none;
+  cursor:pointer;font-weight:700;
+}
+.btn.primary{background:var(--accent);color:white}
+.btn.ghost{
+  background:#f8fafc;border:1px solid #e6eef8;color:#0b2455;
+}
+
+.empty{
+  padding:20px;text-align:center;color:var(--muted);
+}
+
+#pdfViewer{
+  margin-top:20px;background:white;padding:12px;border-radius:12px;
+  display:none;box-shadow:0 6px 18px rgba(0,0,0,0.1);
+}
+#pdfViewer iframe{
+  width:100%;height:500px;border:none;border-radius:12px;
+}
+
+/* QR Verify Modal */
+#verifyModalBg{
+  position:fixed;inset:0;background:rgba(0,0,0,0.45);
+  display:none;align-items:center;justify-content:center;z-index:99;
+}
+#verifyModal{
+  background:white;padding:18px;border-radius:14px;
+  width:90%;max-width:500px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.25);
+}
+.closeBtn{
+  float:right;background:#ef4444;border:none;color:white;
+  padding:6px 10px;border-radius:8px;cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">Vaccination Portal</div>
+  <nav>
+    <a href="dashboard-patient.html">Dashboard</a>
+    <a href="patient-profile.html">Profile</a>
+    <a href="patient-vaccines.html">Vaccines</a>
+    <a href="patient-appointment-book.html">Book</a>
+    <a href="patient-appointments.html">My Appointments</a>
+    <a class="active" href="patient-certificates.html">Certificates</a>
+    <a href="patient-notifications.html">Notifications</a>
+    <a href="patient-feedback.html">Feedback</a>
+    <a id="logoutBtn" style="background:#ef4444;color:white;padding:8px 10px;border-radius:10px;text-decoration:none">Logout</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>My Vaccination Certificates</h1>
+  <div class="muted">Download, verify or view vaccination certificates with QR code.</div>
+
+  <div id="listWrap" class="grid"></div>
+  <div id="empty" class="empty" style="display:none">No vaccination records found.</div>
+
+  <!-- PDF Inline Viewer -->
+  <div id="pdfViewer">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong>Inline Certificate Viewer</strong>
+      <button onclick="closePDF()" class="closeBtn">Close</button>
+    </div>
+    <iframe id="pdfFrame"></iframe>
+  </div>
+</div>
+
+<!-- QR Verify Modal -->
+<div id="verifyModalBg">
+  <div id="verifyModal">
+    <button onclick="closeVerify()" class="closeBtn">Close</button>
+    <h3>QR Verification Result</h3>
+    <div id="verifyBody" style="margin-top:10px;color:#333;font-size:14px;"></div>
+  </div>
+</div>
+
+<script>
+(async function(){
+
+  const token = localStorage.getItem('authToken');
+  const user = JSON.parse(localStorage.getItem('user') || "{}");
+
+  if(!token){
+    alert("Please login first!");
+    location.href="login.html";
+    return;
+  }
+  if(user.role !== "patient"){
+    alert("Access denied");
+    location.href="dashboard-admin.html";
+    return;
+  }
+
+  document.getElementById("logoutBtn").onclick = ()=>{
+    localStorage.clear(); location.href="login.html";
+  };
+
+  const listWrap = document.getElementById('listWrap');
+  const empty = document.getElementById('empty');
+
+  // Load vaccination records
+  async function load(){
+    listWrap.innerHTML="Loading...";
+    try{
+      const res = await fetch('/api/my/vaccinations', {
+        headers:{ 'Authorization':'Bearer '+token }
+      });
+      const records = await res.json();
+
+      if(!records.length){
+        listWrap.innerHTML="";
+        empty.style.display="block";
+        return;
+      }
+
+      empty.style.display="none";
+      render(records);
+    }catch(e){
+      listWrap.innerHTML="Error loading...";
+    }
+  }
+
+  function render(records){
+    listWrap.innerHTML="";
+
+    records.forEach(r=>{
+      let card = document.createElement("div");
+      card.className="card";
+
+      card.innerHTML = `
+        <div class="vcard">
+          <div class="vimg">${initials(r.vaccine_name)}</div>
+          <div>
+            <div style="font-weight:800">${escape(r.vaccine_name)}</div>
+            <div class="small">Dose: ${r.dose_no}</div>
+            <div class="small">Given on: ${formatDate(r.given_on)}</div>
+            <div class="small">By: ${escape(r.staff_name || "—")}</div>
+          </div>
+        </div>
+      `;
+
+      // QR section
+      let qrSrc = buildQR(r);
+      let qr = document.createElement("img");
+      qr.className="qr";
+      qr.src = qrSrc;
+
+      let actions = document.createElement("div");
+      actions.className="actions";
+
+      // View & Download PDF
+      if(r.certificate_path){
+        let viewInline = button("Open Inline", "ghost");
+        viewInline.onclick = ()=> openPDF(r.certificate_path);
+        actions.appendChild(viewInline);
+
+        let view = button("Download", "primary");
+        view.href = r.certificate_path;
+        view.target="_blank";
+        actions.appendChild(view);
+      }else{
+        let gen = button("Request Certificate", "primary");
+        gen.onclick = ()=> generateCertificate(r.id, gen);
+        actions.appendChild(gen);
+      }
+
+      // QR ACTIONS
+      let verifyBtn = button("Verify QR", "ghost");
+      verifyBtn.onclick = ()=> verifyQR(r);
+      actions.appendChild(verifyBtn);
+
+      let downloadQRBtn = button("Download QR", "ghost");
+      downloadQRBtn.onclick = ()=> downloadQR(qr);
+      actions.appendChild(downloadQRBtn);
+
+      // add elements
+      card.appendChild(qr);
+      card.appendChild(actions);
+
+      listWrap.appendChild(card);
+    });
+  }
+
+  // Build QR content
+  function buildQR(r){
+    let text = r.qr_text || JSON.stringify({
+      vaccine: r.vaccine_name,
+      dose: r.dose_no,
+      record_id: r.id,
+      patient_id: user.id,
+      given_on: r.given_on
+    });
+
+    return `https://chart.googleapis.com/chart?cht=qr&chs=300x300&chl=${encodeURIComponent(text)}`;
+  }
+
+  function initials(name){
+    if(!name) return "V";
+    return name.split(" ").map(x=>x[0]).slice(0,2).join("").toUpperCase();
+  }
+
+  function formatDate(dt){
+    const d = new Date(dt);
+    return d.toLocaleString();
+  }
+
+  // Buttons
+  function button(text, type){
+    let b = document.createElement("a");
+    b.innerText=text;
+    b.className="btn " + type;
+    return b;
+  }
+
+  // Escape HTML
+  function escape(s){
+    if(!s) return "";
+    return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+  }
+
+  // Inline PDF viewer
+  function openPDF(url){
+    document.getElementById('pdfViewer').style.display='block';
+    document.getElementById('pdfFrame').src = url;
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  window.closePDF = ()=> {
+    document.getElementById('pdfViewer').style.display='none';
+    document.getElementById('pdfFrame').src="";
+  };
+
+  // Download QR
+  function downloadQR(img){
+    let canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    let ctx = canvas.getContext("2d");
+    ctx.drawImage(img,0,0);
+
+    let link = document.createElement("a");
+    link.download="qr_code.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
+  // QR Verify (decode JSON)
+  function verifyQR(r){
+    let text = r.qr_text || JSON.stringify({
+      vaccine:r.vaccine_name,
+      dose:r.dose_no,
+      record_id:r.id,
+      patient_id:user.id,
+      given_on:r.given_on
+    });
+
+    let html="";
+    try{
+      let data = JSON.parse(text);
+      for(let k in data){
+        html += `<b>${k}:</b> ${escape(data[k])}<br>`;
+      }
+    }catch(e){
+      html = `Raw Data:<br>${escape(text)}`;
+    }
+
+    document.getElementById("verifyBody").innerHTML = html;
+    document.getElementById("verifyModalBg").style.display="flex";
+  }
+
+  window.closeVerify = ()=> document.getElementById("verifyModalBg").style.display="none";
+
+  // generate new certificate
+  async function generateCertificate(id, btn){
+    btn.innerText="Requesting...";
+    btn.disabled=true;
+    try{
+      const res = await fetch("/api/certificate/generate",{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "Authorization":"Bearer "+token
+        },
+        body:JSON.stringify({vaccination_id:id})
+      });
+      const out = await res.json();
+      if(out.success){
+        alert("Certificate request sent!");
+        load();
+      } else alert(out.msg);
+    }catch(e){
+      alert("Error");
+    }
+    btn.disabled=false;
+    btn.innerText="Request Certificate";
+  }
+
+  await load();
+
+})();
+</script>
+
+</body>
+</html>
